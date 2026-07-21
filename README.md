@@ -48,7 +48,7 @@ environment and evaluator are pure in-memory Python (no Docker, no SQL server at
 ```mermaid
 flowchart TD
     POL["policy.md"] --> AGENT
-    SEED[("seed db.json<br/>+ task delta")] --> ENV
+    SEED[("seed DB (msp_db.json)<br/>+ task delta")] --> ENV
 
     subgraph LOOP["Conversation loop — Orchestrator (agent greets first)"]
         direction LR
@@ -175,7 +175,7 @@ tasks). Duplicate ids across the sources are rejected. Each task specifies:
   simulator never invents ids. Its `user_id` also becomes the **authenticated caller** for the
   tools (org scoping + default attribution: requested_by on changes, opened_by on problems,
   notification sender) — exposed as the derived `Task.acting_user_id`,
-- an optional **initial_state_delta** applied over `db.json` (`set` / `create` / `delete`),
+- an optional **initial_state_delta** applied over the seed DB (`set` / `create` / `delete`),
 - **evaluation_criteria**: two signals —
   - **actions** — a correct gold tool-call sequence, replayed to compute a target DB state for
     hash matching.

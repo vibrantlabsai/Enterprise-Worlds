@@ -28,7 +28,7 @@ def _itsm_db_path() -> Path:
 
     ``EOPS_ITSM_DB`` is the legacy spelling, kept working for existing consumers.
     """
-    name = os.environ.get("EW_ITSM_DB") or os.environ.get("EOPS_ITSM_DB", _DEFAULT_DB_FILE)
+    name = os.environ.get("EW_ITSM_DB") or os.environ.get("EOPS_ITSM_DB") or _DEFAULT_DB_FILE
     return _DATA_DIR / name
 
 DOMAIN_NAME = "itsm"
@@ -40,7 +40,7 @@ def get_environment(
     org_id: Optional[str] = None,
     org_ids: Optional[Iterable[str]] = None,
 ) -> Environment:
-    """Build a fresh ITSM environment: load ``db.json`` and apply the task delta (item 7).
+    """Build a fresh ITSM environment: load the seed DB and apply the task delta (item 7).
 
     ``acting_user_id`` is the authenticated caller from the task context. ``org_ids`` is the task's
     **tenancy scope** — the set of orgs its data lives in (a 1-element set for single-tenant, the

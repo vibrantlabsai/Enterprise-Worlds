@@ -30,7 +30,10 @@ warnings.warn(
 for _info in pkgutil.walk_packages(_ew.__path__, prefix="enterprise_worlds.", onerror=lambda _name: None):
     try:
         importlib.import_module(_info.name)
-    except ImportError:
+    except Exception:
+        # Skip anything that can't import here (missing optional extras, or
+        # environment-dependent module-level reads); importing it via eops_gym
+        # later surfaces the real error at the true call site.
         continue
 
 for _name, _module in list(sys.modules.items()):

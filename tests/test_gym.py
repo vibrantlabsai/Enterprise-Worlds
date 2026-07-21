@@ -19,7 +19,8 @@ from enterprise_worlds.domains.itsm import environment as itsm_env
 from enterprise_worlds.gym.gym_agent import AgentGymEnv, parse_action_string
 from enterprise_worlds.user.base import STOP
 
-TASK_ID = "itsm_restore_retired_ci_001"
+# First shipped task — derived so the fixture can't go stale when tasks.json is regenerated.
+TASK_ID = itsm_env.get_tasks()[0].id
 
 
 def test_parse_action_string():
