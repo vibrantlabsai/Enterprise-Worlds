@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import pytest
 
-from eops_gym.domains.itsm.environment import ITSM_DB_PATH
-from eops_gym.domains.itsm.data_model import ItsmDB
-from eops_gym.domains.itsm.tools import ItsmTools
-from eops_gym.domains.itsm.tools._base import ItsmError
+from enterprise_worlds.domains.itsm.environment import ITSM_DB_PATH
+from enterprise_worlds.domains.itsm.data_model import ItsmDB
+from enterprise_worlds.domains.itsm.tools import ItsmTools
+from enterprise_worlds.domains.itsm.tools._base import ItsmError
 
 ACTING = "USER_039"  # active ORG_001 admin in the 20-org seed
 ORG = "ORG_001"

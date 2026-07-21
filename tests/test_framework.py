@@ -12,18 +12,18 @@ from typing import List, Literal, Optional
 
 import pytest
 
-from eops_gym.data_model.message import (
+from enterprise_worlds.data_model.message import (
     AssistantMessage,
     SystemMessage,
     ToolCall,
     ToolMessage,
     UserMessage,
 )
-from eops_gym.environment.tool import build_tool_schema
-from eops_gym.environment.toolkit import ToolKitBase, ToolType, is_tool
-from eops_gym.utils.clock import DEFAULT_NOW, get_now, reset_now, set_now
-from eops_gym.utils.hash_utils import get_dict_hash, get_pydantic_hash
-from eops_gym.utils.llm_utils import _parse_args, to_litellm_messages
+from enterprise_worlds.environment.tool import build_tool_schema
+from enterprise_worlds.environment.toolkit import ToolKitBase, ToolType, is_tool
+from enterprise_worlds.utils.clock import DEFAULT_NOW, get_now, reset_now, set_now
+from enterprise_worlds.utils.hash_utils import get_dict_hash, get_pydantic_hash
+from enterprise_worlds.utils.llm_utils import _parse_args, to_litellm_messages
 
 
 # --------------------------------------------------------------------- schema gen
@@ -87,12 +87,12 @@ def test_clock_default_set_reset():
 
 # ------------------------------------------------------------------------- delta
 def _small_db():
-    from eops_gym.domains.itsm.environment import get_environment
+    from enterprise_worlds.domains.itsm.environment import get_environment
     return get_environment().tools.db
 
 
 def test_delta_set_create_delete():
-    from eops_gym.environment.delta import apply_delta
+    from enterprise_worlds.environment.delta import apply_delta
     db = _small_db()
     before = db.get_hash()
     out = apply_delta(db, {"incident": {"INC_003": {"set": {"priority": "critical"}}}})
@@ -114,7 +114,7 @@ def test_delta_set_create_delete():
 
 
 def test_delta_error_paths():
-    from eops_gym.environment.delta import apply_delta
+    from enterprise_worlds.environment.delta import apply_delta
     db = _small_db()
     with pytest.raises(ValueError):  # set on a missing record
         apply_delta(db, {"incident": {"NOPE_999": {"set": {"priority": "low"}}}})
@@ -178,7 +178,7 @@ def test_to_litellm_messages_never_emits_empty_content():
 # --------------------------------------------------------------------- evaluator
 def test_nl_judge_parses_think_wrapped_and_fenced_json():
     """Reasoning models wrap JSON in <think> blocks / code fences — the judge must still parse."""
-    from eops_gym.evaluator.evaluator_nl import _parse_judge_response
+    from enterprise_worlds.evaluator.evaluator_nl import _parse_judge_response
     content = (
         "<think>let me grade each one carefully</think>\n"
         '```json\n{"results": [{"expectedOutcome": "a", "metExpectation": true},'
@@ -190,9 +190,9 @@ def test_nl_judge_parses_think_wrapped_and_fenced_json():
 
 def test_evaluator_multiplicative_reward(mocker):
     """DB pass x NL fail => 0; DB pass x NL pass => 1 (real combination path, mocked judge)."""
-    from eops_gym.data_model.message import ToolCall as TC
-    from eops_gym.domains.itsm import environment as itsm_env
-    from eops_gym.evaluator.evaluator import evaluate_task
+    from enterprise_worlds.data_model.message import ToolCall as TC
+    from enterprise_worlds.domains.itsm import environment as itsm_env
+    from enterprise_worlds.evaluator.evaluator import evaluate_task
 
     task = itsm_env.get_tasks()[0]
 
@@ -211,11 +211,11 @@ def test_evaluator_multiplicative_reward(mocker):
         return AssistantMessage(content=json.dumps({"results": results}))
 
     # reward = DB-match x NL.  NL all-met -> reward 1.0
-    mocker.patch("eops_gym.evaluator.evaluator_nl.generate", return_value=judge(True))
+    mocker.patch("enterprise_worlds.evaluator.evaluator_nl.generate", return_value=judge(True))
     r = evaluate_task(ctor, task, trajectory=[], final_env=final_env)
     assert r.db_check.db_match and r.reward == 1.0
 
     # NL not-met -> DB(1) * NL(0) = 0
-    mocker.patch("eops_gym.evaluator.evaluator_nl.generate", return_value=judge(False))
+    mocker.patch("enterprise_worlds.evaluator.evaluator_nl.generate", return_value=judge(False))
     r = evaluate_task(ctor, task, trajectory=[], final_env=final_env)
     assert r.db_check.db_match and r.reward == 0.0

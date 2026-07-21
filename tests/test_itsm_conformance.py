@@ -30,8 +30,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))  # for itsm_oracle
 from itsm_oracle import MCPOracle, diff_db, oracle_available  # noqa: E402
 
-from eops_gym.domains.itsm.data_model import ItsmDB  # noqa: E402
-from eops_gym.domains.itsm.tools import ItsmTools  # noqa: E402
+from enterprise_worlds.domains.itsm.data_model import ItsmDB  # noqa: E402
+from enterprise_worlds.domains.itsm.tools import ItsmTools  # noqa: E402
 
 SEED_JSON = Path(__file__).resolve().parents[1] / "data" / "itsm" / "db.json"
 ACTING_USER = "USER_039"  # karen.watkins — an active ORG_001 admin in the 20-org seed

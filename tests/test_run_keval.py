@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-import eops_gym.run as run
-from eops_gym.evaluator.evaluator import RewardInfo
-from eops_gym.run import TaskResult, _pass_hat_k, run_domain, save_run_dir
+import enterprise_worlds.run as run
+from enterprise_worlds.evaluator.evaluator import RewardInfo
+from enterprise_worlds.run import TaskResult, _pass_hat_k, run_domain, save_run_dir
 
 
 def test_pass_hat_k_estimator():

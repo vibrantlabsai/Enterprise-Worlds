@@ -1,8 +1,14 @@
-## MTOps
+## Enterprise-Worlds
 
-MTOps (Multi-Turn, Multi-Tenant Operations) is a **conversational** benchmark for evaluating LLM agents on
-stateful enterprise-operations workflows: an agent **converses with a simulated user**, operates on
-an in-memory ITSM database through ~95 typed Python tools, and is scored by **golden-trajectory /
+Enterprise-Worlds is a suite of **RL environments for enterprise work**. The environments are
+executable replicas of enterprise ecosystems: real seed databases with all their mess and history,
+the systems and tools agents act through, and the policies that govern them. The tasks are real
+workflows running inside those worlds — natively **multi-turn**, where the conversation with the
+user is part of the work itself, with **verifiable rewards**, so the same environments that
+benchmark an agent can train it.
+
+The first world is **ITSM**: an agent **converses with a simulated user**, operates on an
+in-memory ITSM database through ~95 typed Python tools, and is scored by **golden-trajectory /
 state verification combined with natural-language assertions**.
 
 Each domain specifies:
@@ -81,17 +87,17 @@ OPENAI_API_KEY=sk-...
 
 Models are resolved by [litellm](https://docs.litellm.ai/), so any provider string works.
 
-## The `eops` CLI
+## The `eworlds` CLI
 
 ```bash
 set -a && . ./.env && set +a              # load credentials
 
-eops run    --domain itsm                 # run the eval over the domain's tasks
-eops tasks  --domain itsm                 # list the tasks (persona, goal, criteria)
-eops domain itsm                          # print the domain policy
+eworlds run    --domain itsm                 # run the eval over the domain's tasks
+eworlds tasks  --domain itsm                 # list the tasks (persona, goal, criteria)
+eworlds domain itsm                          # print the domain policy
 ```
 
-`eops run` ties together a litellm tool-calling agent, the user simulator, the environment, and
+`eworlds run` ties together a litellm tool-calling agent, the user simulator, the environment, and
 the evaluator. Useful flags:
 
 | Flag | Default | Description |
@@ -110,7 +116,7 @@ the evaluator. Useful flags:
 | `--verbose`, `-v` | off | Print each task's conversation |
 
 ```bash
-eops run --domain itsm --num-tasks 1 --verbose --save-to results.json
+eworlds run --domain itsm --num-tasks 1 --verbose --save-to results.json
 ```
 
 **Scoring**: reward = gold-action full-DB-hash match × NL assertions. A task passes (reward 1.0)
@@ -131,11 +137,11 @@ provider you must pass the flags explicitly.
 ```bash
 # OpenAI (default models — no flags needed)
 #   .env: OPENAI_API_KEY=sk-...
-eops run --domain itsm --num-tasks 1 -v
+eworlds run --domain itsm --num-tasks 1 -v
 
 # Anthropic — standard API key
 #   .env: ANTHROPIC_API_KEY=sk-ant-api03-...
-eops run --domain itsm --num-tasks 1 -v \
+eworlds run --domain itsm --num-tasks 1 -v \
     --agent-llm anthropic/claude-sonnet-4-5 \
     --user-llm  anthropic/claude-haiku-4-5 \
     --judge-llm anthropic/claude-haiku-4-5
@@ -146,8 +152,8 @@ eops run --domain itsm --num-tasks 1 -v \
 ### Programmatic API
 
 ```python
-from eops_gym.domains.itsm.environment import get_tasks
-from eops_gym.run import run_task
+from enterprise_worlds.domains.itsm.environment import get_tasks
+from enterprise_worlds.run import run_task
 
 task = get_tasks()[0]
 result = run_task("itsm", task, agent_llm="gpt-4o")
@@ -191,30 +197,42 @@ DB fields).
 
 ## Acknowledgements
 
-MTOps is built on the ITSM environment from:
+Enterprise-Worlds is built on the ITSM environment from:
 
 > **EnterpriseOps-Gym: Environments and Evaluations for Stateful Agentic Planning and Tool Use in Enterprise Settings**
 > Shiva Krishna Reddy Malay et al. (ServiceNow) — https://github.com/ServiceNow/EnterpriseOps-Gym · [arXiv:2603.13594](https://arxiv.org/abs/2603.13594)
 
 The ITSM domain schema, the seed databases (the simulated enterprise world), and the typed
 tool surface (the action space) originate from the EnterpriseOps-Gym project, licensed under
-Apache-2.0. MTOps reimplements that environment as in-memory Python tool calls (no Docker / SQL
-server at runtime) and adds, original to this work: a **multi-turn conversational user-simulator
-loop**, an **org-scoped multi-tenant (single-tenant + provider/client MSP) task model**, and a
-**verifier that combines state-based DB comparison with natural-language assertions** in the style
-of [τ-bench](https://arxiv.org/abs/2406.12045) (Yao et al.).
+Apache-2.0. Enterprise-Worlds reimplements that environment as in-memory Python tool calls (no
+Docker / SQL server at runtime) and adds, original to this work: a **multi-turn conversational
+user-simulator loop**, an **org-scoped multi-tenant (single-tenant + provider/client MSP) task
+model**, and a **verifier that combines state-based DB comparison with natural-language
+assertions** in the style of [τ-bench](https://arxiv.org/abs/2406.12045) (Yao et al.).
+
+### Related work
+
+[EnterpriseBench / CoreCraft](https://surgehq.ai/blog/enterprisebench-corecraft) (Surge AI) also
+builds RL environments for enterprise agents, simulating a single fictional company — a
+customer-support organization — with long-horizon tasks graded by expert-authored rubrics.
+Enterprise-Worlds takes a different path to the same destination: **executable replicas of the
+enterprise systems of record themselves** (real schemas, seed data, and policies), tasks that are
+**natively multi-turn** — the conversation with the user is part of the work — and rewards
+**verified against database state** rather than rubrics. Our longer-term aim is to grow the unit
+of evaluation from the task to the job: from agents that assist with work to agents accountable
+for it.
 
 ## Citation
 
-If you use MTOps, please cite this repository:
+If you use Enterprise-Worlds, please cite this repository:
 
 ```bibtex
-@misc{mtops2026,
-      title={{MTOps: Multi-Turn, Multi-Tenant Operations — A Conversational Benchmark for Enterprise-Operations Agents}},
+@misc{enterpriseworlds2026,
+      title={{Enterprise-Worlds: RL Environments for Enterprise Work}},
       author={Shahul Elavakkattil and Ankit Sridhar and Andrew Bastin and Jithin James and Kumar Anirudha and Arjun Devarajan},
       year={2026},
       publisher={Vibrant Labs},
-      url={https://github.com/vibrantlabsai/MTOps},
+      url={https://github.com/vibrantlabsai/Enterprise-Worlds},
 }
 ```
 

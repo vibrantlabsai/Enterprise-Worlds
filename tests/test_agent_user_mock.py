@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from eops_gym.agent.llm_agent import LLMAgent
-from eops_gym.data_model.message import AssistantMessage, ToolCall, UserMessage
-from eops_gym.data_model.tasks import Identity, UserProfile, Scenario
-from eops_gym.user.base import STOP
-from eops_gym.user.user_simulator import UserSimulator
-from eops_gym.utils.llm_utils import generate
+from enterprise_worlds.agent.llm_agent import LLMAgent
+from enterprise_worlds.data_model.message import AssistantMessage, ToolCall, UserMessage
+from enterprise_worlds.data_model.tasks import Identity, UserProfile, Scenario
+from enterprise_worlds.user.base import STOP
+from enterprise_worlds.user.user_simulator import UserSimulator
+from enterprise_worlds.utils.llm_utils import generate
 
 
 def _fake_completion(content, tool_calls=None):
@@ -68,7 +68,7 @@ def test_agent_init_state_and_turn(mocker):
     assert "DOMAIN POLICY" in state.system_messages[0].content
 
     mocker.patch(
-        "eops_gym.agent.llm_agent.generate",
+        "enterprise_worlds.agent.llm_agent.generate",
         return_value=AssistantMessage(content=None, tool_calls=[ToolCall(name="get_incident", arguments={})]),
     )
     msg, state = agent.generate_next_message(UserMessage(content="help"), state)
@@ -100,7 +100,7 @@ def test_user_sim_system_prompt_and_stop():
 def test_user_sim_generates_and_records_turn(mocker):
     us = UserSimulator(_scenario(), llm="gpt-4o-mini")
     state = us.get_init_state()
-    mocker.patch("eops_gym.user.user_simulator.generate", return_value=AssistantMessage(content="my VPN is down"))
+    mocker.patch("enterprise_worlds.user.user_simulator.generate", return_value=AssistantMessage(content="my VPN is down"))
     agent_msg = AssistantMessage(content="How can I help?")
     user_msg, state = us.generate_next_message(agent_msg, state)
     assert user_msg.role == "user" and user_msg.content == "my VPN is down"
