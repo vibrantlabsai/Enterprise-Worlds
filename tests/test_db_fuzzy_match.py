@@ -132,3 +132,15 @@ def test_freetext_unchanged_by_gold_is_ignored():
     pred.incident["INC_003"].worknotes = "agent added a transition note about the vendor part"
     assert compare_dbs(gold, pred, baseline_db=base)[0]      # ignored -> match
     assert not compare_dbs(gold, pred)[0]                    # no baseline -> (incorrectly) fails
+
+
+def test_timestamp_same_instant_format_matches():
+    # 'T' vs space separator for the same instant is not a divergence; a different instant is.
+    sla = next(iter(get_environment().tools.db.incident_sla))
+    def _with_start(t):
+        db = _db_with_notification()
+        db.incident_sla[sla].start_time = t
+        return db
+    gold = _with_start("2024-05-31 14:30:00")
+    assert compare_dbs(gold, _with_start("2024-05-31T14:30:00"))[0]
+    assert not compare_dbs(gold, _with_start("2024-06-01T00:00:00"))[0]

@@ -6,7 +6,8 @@ tools on a fresh seed+delta environment, then compares it to the run's final DB 
 notification subject verbatim — see ``compare_dbs`` and ``utils.text_match``).
 """
 
-from typing import Callable, Optional
+from datetime import datetime
+from typing import Any, Callable, Optional
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -72,6 +73,35 @@ def tool_calls_from_trajectory(trajectory: list[Message]) -> list[ToolCall]:
     return calls
 
 
+_DT_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%d %H:%M:%S.%f",
+    "%Y-%m-%dT%H:%M:%S.%f",
+)
+
+
+def _as_instant(value: Any) -> Optional[datetime]:
+    """Parse a timestamp string to a datetime, or None if it isn't one."""
+    if not isinstance(value, str):
+        return None
+    v = value.strip().removesuffix("Z")
+    for fmt in _DT_FORMATS:
+        try:
+            return datetime.strptime(v, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _values_equal(gv: Any, pv: Any) -> bool:
+    """Exact equality, or the same instant in a different timestamp serialization."""
+    if gv == pv:
+        return True
+    g = _as_instant(gv)
+    return g is not None and g == _as_instant(pv)
+
+
 def _compare_record(
     prefix: str,
     gold: dict,
@@ -85,7 +115,8 @@ def _compare_record(
 ) -> None:
     """Compare two record dicts; append divergences to ``mismatches``.
 
-    Non-free-text fields must be equal. A free-text field is only checked when the gold actually
+    Non-free-text fields must be equal (the same instant in a different timestamp format counts
+    as equal). A free-text field is only checked when the gold actually
     *changed* it from ``baseline`` (the pre-action seed+delta value); if the gold left a prose
     field untouched, the agent's value there is unconstrained. How a changed free-text field is
     judged depends on ``strategy``: ``exact`` (==), ``fuzzy`` (content overlap), or ``llm`` —
@@ -111,7 +142,7 @@ def _compare_record(
                     pending.append({"key": f"{prefix} {field}", "field": field, "gold": gv, "pred": pv})
             elif not fuzzy_text_match(gv, pv, cfg.threshold):
                 mismatches.append(f"{prefix} {field}: {gv!r} !~ {pv!r}")
-        elif gv != pv:
+        elif not _values_equal(gv, pv):
             mismatches.append(f"{prefix} {field}: {gv!r} != {pv!r}")
 
 
