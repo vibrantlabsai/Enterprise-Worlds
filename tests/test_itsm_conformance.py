@@ -129,8 +129,8 @@ SCENARIOS: list[Scenario] = [
              [("update_incident", {"incident_id": "INC_001", "priority": "urgent"})], tags=["enum"]),
     Scenario("enum_change_status",
              [("update_change", {"change_id": "CHG_001", "status": "in_progress"})], tags=["enum"]),
-    Scenario("enum_notification_status",
-             [("update_notification", {"notification_id": "NOTIF_001", "status": "open"})], tags=["enum"]),
+    Scenario("enum_notification_type",  # status is system-managed and no longer a tool parameter
+             [("update_notification", {"notification_id": "NOTIF_001", "type": "broadcast"})], tags=["enum"]),
     Scenario("enum_problem_status",
              [("update_problem", {"problem_id": "PRB_001", "status": "open"})], tags=["enum"]),
     Scenario("enum_ci_status",
@@ -155,8 +155,9 @@ SCENARIOS: list[Scenario] = [
              [("remove_affected_ci_from_incident", {})], tags=["delete"]),
 
     # -- idempotency (§4.5): FIXED — a no-op update now errors instead of re-stamping updated_on ---
-    Scenario("noop_update_notification",  # NOTIF_001 is already 'opened' in the seed — a true no-op
-             [("update_notification", {"notification_id": "NOTIF_001", "status": "opened"})],
+    Scenario("noop_update_notification",  # set a value, then repeat it — the repeat is a true no-op
+             [("update_notification", {"notification_id": "NOTIF_001", "type": "reminder"}),
+              ("update_notification", {"notification_id": "NOTIF_001", "type": "reminder"})],
              tags=["idempotency"]),
     Scenario("noop_update_incident_sla_only_id",
              [("update_incident_sla_details", {"incident_sla_id": "TSLA_001"})],

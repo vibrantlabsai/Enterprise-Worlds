@@ -15,6 +15,7 @@ from enterprise_worlds.data_model.message import Message, ToolCall
 from enterprise_worlds.data_model.tasks import Task
 from enterprise_worlds.environment.db import DB
 from enterprise_worlds.environment.environment import Environment
+from enterprise_worlds.evaluator.normalize import values_equivalent
 from enterprise_worlds.evaluator.text_match_strategy import FreeTextVerdict, TextMatchConfig, judge_free_text
 from enterprise_worlds.utils.text_match import fuzzy_text_match
 
@@ -26,16 +27,32 @@ class DBCheck(BaseModel):
     # Per-field semantic-equivalence verdicts (with reasoning) for every free-text pair the LLM
     # judge decided — so a caller can see WHY a prose field was (not) accepted, not just db_match.
     text_judgments: list[FreeTextVerdict] = Field(default_factory=list)
+    # Divergences that are reported but do NOT gate db_match (free-text prose differences).
+    advisory_mismatches: list[str] = Field(default_factory=list)
+    # False when the gold-action replay itself raised — the reference DB is wrong and the run
+    # cannot be scored against it. Runners treat such trials as invalid.
+    gold_replay_ok: bool = True
 
 
-def _build_gold_env(environment_constructor: Callable[..., Environment], task: Task) -> Environment:
+def _build_gold_env(
+    environment_constructor: Callable[..., Environment], task: Task
+) -> tuple[Environment, list[str]]:
+    """Replay the gold actions; return the env AND every replay failure.
+
+    A failing gold action means the reference DB is silently wrong (QA-audited example: a gold
+    ``update_incident`` passed ``work_notes`` — the tool's param is ``worknotes`` — so the gold
+    write never happened and every agent was graded against the untouched seed value). Any
+    failure invalidates scoring (see :func:`calculate_db_reward`).
+    """
     gold_env = environment_constructor(db_delta=task.initial_state_delta)
+    errors: list[str] = []
     for action in task.evaluation_criteria.actions:
         try:
             gold_env.make_tool_call(action.name, **action.arguments)
         except Exception as e:  # noqa: BLE001
             logger.warning(f"gold action {action.name} failed: {e}")
-    return gold_env
+            errors.append(f"{action.name}: {type(e).__name__}: {e}")
+    return gold_env, errors
 
 
 def _predicted_env(
@@ -74,6 +91,7 @@ def tool_calls_from_trajectory(trajectory: list[Message]) -> list[ToolCall]:
 
 def _compare_record(
     prefix: str,
+    coll: str,
     gold: dict,
     pred: dict,
     freetext: list[str],
@@ -81,16 +99,21 @@ def _compare_record(
     cfg: TextMatchConfig,
     strategy: str,
     mismatches: list[str],
+    advisory: list[str],
     pending: list[dict],
 ) -> None:
     """Compare two record dicts; append divergences to ``mismatches``.
 
-    Non-free-text fields must be equal. A free-text field is only checked when the gold actually
-    *changed* it from ``baseline`` (the pre-action seed+delta value); if the gold left a prose
-    field untouched, the agent's value there is unconstrained. How a changed free-text field is
-    judged depends on ``strategy``: ``exact`` (==), ``fuzzy`` (content overlap), or ``llm`` —
-    which defers to a batched semantic judge by appending ``{field, gold, pred}`` to ``pending``
-    (decided once for the whole DB, so empty/None cases are resolved here to save judge tokens).
+    Non-free-text fields must be equal, modulo :mod:`evaluator.normalize`'s canonical surface
+    forms. A free-text field is only checked when the gold actually *changed* it from
+    ``baseline`` (the pre-action seed+delta value); if the gold left a prose field untouched,
+    the agent's value there is unconstrained. How a changed free-text field is judged depends
+    on ``strategy``: ``exact`` (==), ``fuzzy`` (content overlap), or ``llm`` — which defers to
+    a batched semantic judge by appending ``{field, gold, pred}`` to ``pending`` (decided once
+    for the whole DB, so empty/None cases are resolved here to save judge tokens). Free-text
+    divergences go to ``advisory`` — reported, never gating (an agent can't observe gold's
+    phrasing, and the QA audits measured the prose judge as both over-strict and
+    nondeterministic).
     """
     for field in sorted(set(gold) | set(pred)):
         gv, pv = gold.get(field), pred.get(field)
@@ -99,19 +122,21 @@ def _compare_record(
                 continue  # gold didn't set this prose field; don't constrain the agent
             if strategy == "exact":
                 if gv != pv:
-                    mismatches.append(f"{prefix} {field}: {gv!r} != {pv!r}")
+                    advisory.append(f"{prefix} {field}: {gv!r} != {pv!r}")
             elif strategy == "llm":
                 gold_has = bool(gv and str(gv).strip())
                 pred_has = bool(pv and str(pv).strip())
                 if not gold_has:
                     continue  # no text requirement
                 if not pred_has:
-                    mismatches.append(f"{prefix} {field}: {gv!r} !~ '' (empty)")
+                    advisory.append(f"{prefix} {field}: {gv!r} !~ '' (empty)")
                 else:
                     pending.append({"key": f"{prefix} {field}", "field": field, "gold": gv, "pred": pv})
             elif not fuzzy_text_match(gv, pv, cfg.threshold):
-                mismatches.append(f"{prefix} {field}: {gv!r} !~ {pv!r}")
+                advisory.append(f"{prefix} {field}: {gv!r} !~ {pv!r}")
         elif gv != pv:
+            if values_equivalent(coll, field, gv, pv):
+                continue  # same value in a different canonical surface form (TX vs Texas)
             mismatches.append(f"{prefix} {field}: {gv!r} != {pv!r}")
 
 
@@ -125,6 +150,7 @@ def compare_dbs(
     baseline_db: Optional[DB] = None,
     cfg: Optional[TextMatchConfig] = None,
     text_verdicts_out: Optional[list[FreeTextVerdict]] = None,
+    advisory_out: Optional[list[str]] = None,
 ) -> tuple[bool, list[str]]:
     """Record-by-record DB comparison: structured fields exact, free-text fields per ``cfg``.
 
@@ -135,11 +161,16 @@ def compare_dbs(
     batched call after the structural walk. Returns ``(matched, mismatches)``. When
     ``text_verdicts_out`` is provided, the per-pair :class:`FreeTextVerdict`s from the judge
     (equivalent + reasoning) are appended to it for callers that want the judge's rationale.
+
+    Free-text divergences are appended to ``advisory_out`` instead of gating the verdict, and
+    structured values are compared modulo canonical surface form — so ``db_match`` is fully
+    deterministic (no LLM in the gating path).
     """
     cfg = cfg or TextMatchConfig()
     strategy = cfg.effective_strategy()
     freetext = gold_db.freetext_fields()
     mismatches: list[str] = []
+    advisory: list[str] = advisory_out if advisory_out is not None else []
     pending: list[dict] = []  # llm strategy: free-text pairs to judge in one batch
     for coll in type(gold_db).model_fields:
         gold_coll, pred_coll = getattr(gold_db, coll), getattr(pred_db, coll)
@@ -159,8 +190,8 @@ def compare_dbs(
         for rid in sorted(gold_ids):
             base = _dump(base_coll[rid]) if rid in base_coll else {}
             _compare_record(
-                f"{coll}/{rid}", _dump(gold_coll[rid]), _dump(pred_coll[rid]),
-                ft, base, cfg, strategy, mismatches, pending,
+                f"{coll}/{rid}", coll, _dump(gold_coll[rid]), _dump(pred_coll[rid]),
+                ft, base, cfg, strategy, mismatches, advisory, pending,
             )
     if pending:
         verdicts = judge_free_text(pending, cfg.llm, cfg.llm_args)  # type: ignore[arg-type]
@@ -168,7 +199,7 @@ def compare_dbs(
             text_verdicts_out.extend(verdicts)
         for pair, v in zip(pending, verdicts):
             if not v.equivalent:
-                mismatches.append(f"{pair['key']}: {pair['gold']!r} !≈ {pair['pred']!r} (judge)")
+                advisory.append(f"{pair['key']}: {pair['gold']!r} !≈ {pair['pred']!r} (judge)")
     return (not mismatches), mismatches
 
 
@@ -179,17 +210,26 @@ def calculate_db_reward(
     agent_tool_calls: Optional[list[ToolCall]] = None,
     text_match: Optional[TextMatchConfig] = None,
 ) -> DBCheck:
-    gold_env = _build_gold_env(environment_constructor, task)
+    gold_env, replay_errors = _build_gold_env(environment_constructor, task)
+    if replay_errors:
+        # The reference DB is wrong — scoring anyone against it would be silent noise. Fail
+        # loudly; runners treat gold_replay_ok=False like an invalid (uncounted) trial.
+        return DBCheck(
+            db_match=False, reward=0.0, gold_replay_ok=False,
+            mismatches=[f"GOLD REPLAY BROKEN: {e}" for e in replay_errors][:20],
+        )
     pred_env = _predicted_env(environment_constructor, task, final_env, agent_tool_calls)
     # Baseline = seed+delta before any gold action, so free-text fields the gold never changed
     # don't constrain the agent.
     baseline_db = environment_constructor(db_delta=task.initial_state_delta).tools.db
     text_verdicts: list[FreeTextVerdict] = []
+    advisory: list[str] = []
     match, mismatches = compare_dbs(
         gold_env.tools.db, pred_env.tools.db, baseline_db, text_match,
-        text_verdicts_out=text_verdicts,
+        text_verdicts_out=text_verdicts, advisory_out=advisory,
     )
     return DBCheck(
         db_match=match, reward=1.0 if match else 0.0,
         mismatches=mismatches[:20], text_judgments=text_verdicts,
+        advisory_mismatches=advisory[:20],
     )

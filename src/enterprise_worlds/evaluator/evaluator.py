@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from enterprise_worlds.data_model.message import Message, ToolCall
 from enterprise_worlds.data_model.tasks import Task
 from enterprise_worlds.environment.environment import Environment
-from enterprise_worlds.evaluator.evaluator_env import DBCheck, calculate_db_reward
+from enterprise_worlds.evaluator.evaluator_env import DBCheck, _predicted_env, calculate_db_reward
 from enterprise_worlds.evaluator.evaluator_nl import NLCheck, evaluate_nl_assertions
 from enterprise_worlds.evaluator.text_match_strategy import TextMatchConfig
 
@@ -58,11 +58,18 @@ def evaluate_task(
         )
 
     # NL-assertion judge. Skipped for RL/gym reward, where the judge LLM is unnecessary
-    # overhead/non-determinism.
+    # overhead/non-determinism. The judge grades state claims against the final DB
+    # (the transcript-only judge measurably credited narrated-but-never-executed actions).
     nl_check: Optional[NLCheck] = None
     if criteria.nl_assertions and not skip_nl_assertions:
+        final_db = None
+        if final_env is not None or agent_tool_calls is not None:
+            final_db = _predicted_env(
+                environment_constructor, task, final_env, agent_tool_calls
+            ).tools.db
         nl_check = evaluate_nl_assertions(
-            trajectory, criteria.nl_assertions, llm=nl_llm, llm_args=nl_llm_args
+            trajectory, criteria.nl_assertions, llm=nl_llm, llm_args=nl_llm_args,
+            final_db=final_db,
         )
 
     reward = (db_check.reward if db_check else 1.0) * (nl_check.reward if nl_check else 1.0)

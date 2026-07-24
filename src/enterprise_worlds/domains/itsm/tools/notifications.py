@@ -10,6 +10,7 @@ import re
 from datetime import datetime
 from typing import List, Optional
 
+
 from enterprise_worlds.domains.itsm import enums
 from enterprise_worlds.domains.itsm.data_model import Notification
 from enterprise_worlds.domains.itsm.tools._base import ItsmError, ItsmToolsBase
@@ -95,27 +96,27 @@ class NotificationToolsMixin(ItsmToolsBase):
         incident_id: str,
         email: str,
         type: Optional[str] = None,
-        status: Optional[str] = None,
         subject: Optional[str] = None,
         message: Optional[str] = None,
     ) -> Notification:
         """Create and send a new notification associated with an incident.
+
+        The system processes the send as part of the call, so the stored delivery status is
+        always ``sent`` — delivery lifecycle is system-managed, not a caller decision.
 
         Args:
             incident_id: Id of the associated incident (required).
             email: Recipient email address; must belong to an existing user (required).
             type: Notification type (alert, update, reminder, report, solution_proposal,
                 other); defaults to 'other'.
-            status: Notification status (queued, sent, delivered, opened, failed); defaults
-                to 'queued'.
             subject: Subject of the notification.
             message: Message content of the notification.
 
         Returns:
-            The created notification.
+            The created notification (status ``sent``).
         """
         # Enum validation first (the reference validates the request body before FK checks).
-        self._validate_notification_enums(type=type, status=status)
+        self._validate_notification_enums(type=type)
         self._require_incident(incident_id)
         self._require_email_user(email)
         acting_email = self._acting_email()
@@ -136,7 +137,7 @@ class NotificationToolsMixin(ItsmToolsBase):
             subject=subject,
             message=message,
             type=type or "other",
-            status=status or "queued",
+            status="sent",
             created_on=now,
             updated_on=now,
         )
@@ -150,11 +151,12 @@ class NotificationToolsMixin(ItsmToolsBase):
         incident_id: Optional[str] = None,
         email: Optional[str] = None,
         type: Optional[str] = None,
-        status: Optional[str] = None,
         subject: Optional[str] = None,
         message: Optional[str] = None,
     ) -> Notification:
         """Update an existing notification. Only the fields you pass are changed.
+
+        Delivery status is system-managed and cannot be updated.
 
         Args:
             notification_id: Id of the notification to update (required).
@@ -162,7 +164,6 @@ class NotificationToolsMixin(ItsmToolsBase):
             email: New recipient email; must belong to an existing user if supplied.
             type: New notification type (alert, update, reminder, report,
                 solution_proposal, other).
-            status: New notification status (queued, sent, delivered, opened, failed).
             subject: New subject.
             message: New message content.
 
@@ -170,7 +171,7 @@ class NotificationToolsMixin(ItsmToolsBase):
             The updated notification.
         """
         # Enum validation first (the reference validates the request body before FK checks).
-        self._validate_notification_enums(type=type, status=status)
+        self._validate_notification_enums(type=type)
         # ``subject``/``message`` carry a min_length=1 constraint — '' is rejected at the request
         # boundary (before the notification-existence check), not stored or treated as a no-op.
         self._reject_empty("subject", subject)
@@ -180,7 +181,6 @@ class NotificationToolsMixin(ItsmToolsBase):
             "incident_id": incident_id,
             "email": email,
             "type": type,
-            "status": status,
             "subject": subject,
             "message": message,
         }
