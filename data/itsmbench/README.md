@@ -26,12 +26,15 @@ Recorded runs are **not yet checked in**. Three models cover all 53 tasks at 4 t
 ready to land here as `trajectories/<model>/<task_id>/trial_{0..3}.json`. Qwen3.7-plus is excluded:
 it ran on the earlier `amazon73` set and covered only 40 of these 53 tasks.
 
+Those runs predate the ID rename, so their directories are still keyed by the original mining-run
+ids. `task_id_map.json` (local, uncommitted) translates between the two and must be applied before
+the trajectories land here.
+
 ## Task IDs
 
-IDs currently carry their mining-run provenance verbatim
-(`envscaler_msp_band_sarvam_50_20260702-230603_shahul/…/iter_029`), and the `trajectories/`
-directory layout mirrors them exactly. These are **provisional** — a rename to stable public IDs
-has to rewrite tasks, trajectory paths, and error-analysis references together.
+IDs are stable and tenancy-tagged: `itsmbench_msp_001`–`itsmbench_msp_031` and
+`itsmbench_single_001`–`itsmbench_single_022`. Treat them as the public identity of a task — they
+are what the leaderboard and any downstream analysis should join on.
 
 ## Provenance
 

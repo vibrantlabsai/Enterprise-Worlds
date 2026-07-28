@@ -13,7 +13,7 @@ and advances to the next agent turn (or episode end).
     import gymnasium as gym
     from enterprise_worlds.gym import register_gym_agent, EW_ENV_ID
     register_gym_agent()
-    env = gym.make(EW_ENV_ID, domain="itsm", task_id="msp_band_iter_004")
+    env = gym.make(EW_ENV_ID, domain="itsm", task_id="itsmbench_msp_001")
     obs, info = env.reset()
     obs, reward, terminated, truncated, info = env.step('list_users(first_name="Aisha")')
     ...
