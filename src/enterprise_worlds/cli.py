@@ -153,6 +153,43 @@ def run_show_domain(args: argparse.Namespace) -> None:
     print(spec.policy_path.read_text(encoding="utf-8"))
 
 
+def run_validate_tasks(args: argparse.Namespace) -> None:
+    """Offline task-file gate: gold signatures/replay/determinism, ids, sim guidance."""
+    import os
+
+    from enterprise_worlds.evaluator.task_gate import validate_tasks
+
+    if args.tasks_file:
+        os.environ["EW_ITSM_TASKS"] = args.tasks_file
+    spec = get_domain(args.domain)
+    tasks = spec.get_tasks()
+
+    def env_ctor_for(task):
+        def ctor(db_delta=None):
+            return spec.get_environment(
+                db_delta=db_delta,
+                acting_user_id=task.acting_user_id,
+                org_id=task.org_id,
+                org_ids=task.org_ids,
+            )
+        return ctor
+
+    report = validate_tasks(tasks, env_ctor_for, check_determinism=not args.no_determinism)
+    for issue in report.errors:
+        print(f"ERROR [{issue.kind}] {issue.task_id}: {issue.detail}")
+    if not args.errors_only:
+        for issue in report.warnings:
+            print(f"warn  [{issue.kind}] {issue.task_id}: {issue.detail}")
+    print(
+        f"\n{report.total} tasks · {len(report.errors)} errors · {len(report.warnings)} warnings"
+    )
+    if args.save_to:
+        dump_file(args.save_to, report.model_dump())
+        print(f"saved report to {args.save_to}")
+    if not report.ok:
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="eworlds", description="Enterprise-Worlds command line interface")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -168,6 +205,20 @@ def main() -> None:
     domain_parser = subparsers.add_parser("domain", help="Show a domain's policy")
     domain_parser.add_argument("domain", type=str, choices=list_domains(), help="Domain name")
     domain_parser.set_defaults(func=run_show_domain)
+
+    gate_parser = subparsers.add_parser(
+        "validate-tasks",
+        help="Offline task-file gate: gold action signatures/replay/determinism, duplicate ids, sim guidance",
+    )
+    gate_parser.add_argument("--domain", "-d", type=str, default="itsm", choices=list_domains())
+    gate_parser.add_argument(
+        "--tasks-file", type=str, default=None,
+        help="Validate this tasks.json instead of the domain's shipped tasks (sets EW_ITSM_TASKS).",
+    )
+    gate_parser.add_argument("--errors-only", action="store_true", help="Suppress warnings in output.")
+    gate_parser.add_argument("--no-determinism", action="store_true", help="Skip the double-replay hash check.")
+    gate_parser.add_argument("--save-to", type=str, default=None, help="Write the JSON report here.")
+    gate_parser.set_defaults(func=run_validate_tasks)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):

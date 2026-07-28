@@ -71,6 +71,31 @@ def _pass_hat_k(n: int, c: int, k: int) -> float:
     return math.comb(c, k) / math.comb(n, k)
 
 
+#: Error substrings that mark a crash as infrastructure (model/provider/plumbing), not agent
+#: behavior. QA audits found whole rollouts zeroed by user-sim 400s and provider auth failures,
+#: which both poisons pass-rates used for difficulty banding and fabricates model comparisons.
+INFRA_ERROR_SIGNATURES = (
+    "assistant message prefill",
+    "accessdeniedexception",
+    "authentication failed",
+    "rate limit",
+    "rate_limit",
+    "overloaded",
+    "connection",
+    "timeout",
+    "timed out",
+    "429",
+    "500",
+    "502",
+    "503",
+)
+
+
+def _is_infra_error(e: Exception) -> bool:
+    text = f"{type(e).__name__}: {e}".lower()
+    return any(sig in text for sig in INFRA_ERROR_SIGNATURES)
+
+
 class TaskResult(BaseModel):
     """Outcome of a single task trial (serialisable for --save-to / run dir)."""
 
@@ -82,6 +107,10 @@ class TaskResult(BaseModel):
     num_tool_calls: int
     trajectory: list[Message]
     error: Optional[str] = None  # set if the trial crashed (e.g. provider error); reward is 0
+    # True when the trial never exercised agent behavior (infra crash, or the task's own gold
+    # replay is broken) — excluded from pass^k denominators under verifier v2 so infrastructure
+    # noise doesn't masquerade as agent failure.
+    invalid: bool = False
 
 
 class RunResults(BaseModel):
@@ -93,20 +122,34 @@ class RunResults(BaseModel):
     results: list[TaskResult]  # flat list of every task x trial outcome
 
     @property
+    def valid_results(self) -> list[TaskResult]:
+        """Results that exercised real agent behavior (invalid/infra-crashed trials excluded)."""
+        return [r for r in self.results if not r.invalid]
+
+    @property
+    def invalid_runs(self) -> int:
+        return sum(1 for r in self.results if r.invalid)
+
+    @property
     def avg_reward(self) -> float:
-        """Mean reward across all task x trial runs."""
-        if not self.results:
+        """Mean reward across all valid task x trial runs."""
+        valid = self.valid_results
+        if not valid:
             return 0.0
-        return sum(r.reward for r in self.results) / len(self.results)
+        return sum(r.reward for r in valid) / len(valid)
 
     def rewards_by_task(self) -> dict[str, list[float]]:
         by_task: dict[str, list[float]] = {}
-        for r in self.results:
+        for r in self.valid_results:
             by_task.setdefault(r.task_id, []).append(r.reward)
         return by_task
 
     def avg_pass_hat_k(self) -> dict[int, float]:
-        """``pass^j`` for j=1..k, averaged over tasks (a trial 'passes' when reward >= 1.0)."""
+        """``pass^j`` for j=1..k, averaged over tasks (a trial 'passes' when reward >= 1.0).
+
+        Invalid trials (infra crashes, broken gold) are excluded from the denominators — a
+        crashed run says nothing about the agent.
+        """
         by_task = self.rewards_by_task()
         if not by_task:
             return {}
@@ -170,6 +213,10 @@ def run_task(
             nl_llm=judge_llm,
             db_text_match=db_text_match,
         )
+        # A broken gold replay means the task can't score anyone — not an agent failure.
+        gold_broken = bool(
+            reward_info.db_check is not None and not reward_info.db_check.gold_replay_ok
+        )
         return TaskResult(
             task_id=task.id,
             trial=trial,
@@ -178,6 +225,7 @@ def run_task(
             stopped=run.stopped,
             num_tool_calls=len(run.agent_tool_calls),
             trajectory=run.trajectory,
+            invalid=gold_broken,
         )
     finally:
         reset_now()
@@ -235,6 +283,9 @@ def run_domain(
                     num_tool_calls=0,
                     trajectory=[],
                     error=f"{type(e).__name__}: {e}",
+                    # Infra crashes (provider 4xx/5xx, auth, prefill 400s) never exercised the
+                    # agent — mark invalid so aggregation excludes them from pass^k.
+                    invalid=_is_infra_error(e),
                 )
             results.append(result)
             if on_result is not None:
@@ -277,9 +328,12 @@ def save_run_dir(results: RunResults, out_dir: Union[str, Path]) -> Path:
     by_task = results.rewards_by_task()
     per_task = []
     errors_by_task: dict[str, list[str]] = {}
+    invalid_by_task: dict[str, int] = {}
     for r in results.results:
         if r.error:
             errors_by_task.setdefault(r.task_id, []).append(r.error)
+        if r.invalid:
+            invalid_by_task[r.task_id] = invalid_by_task.get(r.task_id, 0) + 1
     for tid, rewards in by_task.items():
         c = sum(1 for x in rewards if x >= 1.0)
         n = len(rewards)
@@ -290,7 +344,15 @@ def save_run_dir(results: RunResults, out_dir: Union[str, Path]) -> Path:
             "trials": n,
             "pass^k": {str(j): _pass_hat_k(n, c, j) for j in range(1, results.k + 1)},
             "errors": errors_by_task.get(tid, []),
+            "invalid_runs": invalid_by_task.get(tid, 0),
         })
+    # Tasks whose every trial was invalid never reach by_task; surface them rather than dropping.
+    for tid, count in invalid_by_task.items():
+        if tid not in by_task:
+            per_task.append({
+                "task_id": tid, "rewards": [], "passes": 0, "trials": 0,
+                "pass^k": {}, "errors": errors_by_task.get(tid, []), "invalid_runs": count,
+            })
 
     summary = {
         "domain": results.domain,
@@ -300,6 +362,7 @@ def save_run_dir(results: RunResults, out_dir: Union[str, Path]) -> Path:
         "k": results.k,
         "num_tasks": len(by_task),
         "num_runs": len(results.results),
+        "invalid_runs": results.invalid_runs,
         "avg_reward": results.avg_reward,
         "avg_pass^k": {str(j): v for j, v in results.avg_pass_hat_k().items()},
         "per_task": per_task,
