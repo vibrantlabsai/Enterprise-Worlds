@@ -22,6 +22,9 @@ def _env_ctor_for(task):
         return itsm_env.get_environment(
             db_delta=db_delta,
             acting_user_id=task.acting_user_id,
+            org_id=task.org_id,
+            org_ids=task.org_ids,
+            seed_db=task.seed_db,
         )
 
     return ctor

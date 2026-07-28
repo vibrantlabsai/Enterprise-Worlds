@@ -6,7 +6,7 @@ replay and the agent run must stamp identical times. Tools therefore read the cu
 by default it is a stable constant so behaviour is deterministic even outside a task run.
 
 The clock canonicalises to the **seed timestamp format** ``"YYYY-MM-DD HH:MM:SS"`` (space-separated,
-matching ``data/itsm/db.json``). A task's ``current_time`` arrives ISO-8601 with a ``T`` separator
+matching ``data/itsmbench/msp_db.json``). A task's ``current_time`` arrives ISO-8601 with a ``T`` separator
 (e.g. ``"2025-12-03T13:00:00"``); ``set_now`` reformats it to the seed format so a freshly stamped
 ``created_at``/``updated_at`` is byte-identical to seed/unmodified rows. Without this, the DB compare
 (a raw string equality) flags a spurious mismatch whenever one side re-stamps a timestamp the other

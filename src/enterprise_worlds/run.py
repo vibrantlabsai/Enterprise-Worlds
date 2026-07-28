@@ -152,6 +152,7 @@ def run_task(
                 acting_user_id=task.acting_user_id,
                 org_id=task.org_id,
                 org_ids=task.org_ids,
+                seed_db=task.seed_db,
             )
 
         env = env_ctor(db_delta=task.initial_state_delta)

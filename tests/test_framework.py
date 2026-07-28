@@ -199,6 +199,7 @@ def test_evaluator_multiplicative_reward(mocker):
     def ctor(db_delta=None):
         return itsm_env.get_environment(
             db_delta=db_delta, acting_user_id=task.acting_user_id,
+            org_id=task.org_id, org_ids=task.org_ids, seed_db=task.seed_db,
         )
 
     final_env = ctor(db_delta=task.initial_state_delta)

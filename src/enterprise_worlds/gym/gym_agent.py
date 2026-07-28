@@ -204,6 +204,8 @@ class AgentGymEnv(gym.Env):
     def _env_ctor(self, db_delta=None):
         return self._spec.get_environment(
             db_delta=db_delta, acting_user_id=self._task.acting_user_id,
+            org_id=self._task.org_id, org_ids=self._task.org_ids,
+            seed_db=self._task.seed_db,
         )
 
     def _build(self):

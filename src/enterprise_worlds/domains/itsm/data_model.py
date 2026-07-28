@@ -21,7 +21,7 @@ from enterprise_worlds.environment.db import DB
 #: Shared FK spec, the single source of truth for foreign-key relationships used by both the
 #: integrity check / org slice here AND the TypeScript review tool (task-review reads the same
 #: ``fk_spec.json`` from the gym data dir). Keep it as data — never hand-duplicate the spec.
-_FK_SPEC_PATH = Path(__file__).resolve().parents[3].parent / "data" / "itsm" / "fk_spec.json"
+_FK_SPEC_PATH = Path(__file__).resolve().parents[3].parent / "data" / "itsmbench" / "fk_spec.json"
 
 
 class ItsmRecord(BaseModel):

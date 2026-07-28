@@ -83,6 +83,10 @@ class Task(BaseModel):
     # single-org alias (a 1-elt scope); `org_ids` takes precedence when both are set.
     org_ids: Optional[List[str]] = None
     org_id: Optional[str] = None
+    # Which seed world this task is written against, as a bare filename in the domain data dir
+    # (e.g. ``msp_db.json`` / ``single_tenant_db.json``). The suite is mixed-seed, so the seed is a
+    # property of the task, not of the run; when None the domain default (``EW_ITSM_DB``) is used.
+    seed_db: Optional[str] = None
     # item 7: collection -> record_id -> {set|create|delete}
     initial_state_delta: Optional[Delta] = None
     # Wall-clock "now" for this scenario (ISO 8601). Drives the env clock for the live run and the
