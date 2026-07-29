@@ -1,5 +1,7 @@
 # Enterprise-Worlds
 
+**[Live leaderboard →](https://enterpriseworlds.vibrantlabs.com/)** — six models on ITSMBench, scored `pass@k` and `pass^k` over four independent trials.
+
 Most agent benchmarks stop at the answer. Real organizations don't — work only counts once it has
 been carried out in a system of record, by someone allowed to do it, with a trail that survives an
 audit. That operational layer is where agent work actually lands, and it is largely unmeasured.
