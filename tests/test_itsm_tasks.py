@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from eops_gym.data_model.message import ToolCall
-from eops_gym.domains.itsm import environment as itsm_env
-from eops_gym.evaluator.evaluator_env import calculate_db_reward
+from enterprise_worlds.data_model.message import ToolCall
+from enterprise_worlds.domains.itsm import environment as itsm_env
+from enterprise_worlds.evaluator.evaluator_env import calculate_db_reward
 
 TASKS = itsm_env.get_tasks()
 
@@ -22,6 +22,9 @@ def _env_ctor_for(task):
         return itsm_env.get_environment(
             db_delta=db_delta,
             acting_user_id=task.acting_user_id,
+            org_id=task.org_id,
+            org_ids=task.org_ids,
+            seed_db=task.seed_db,
         )
 
     return ctor

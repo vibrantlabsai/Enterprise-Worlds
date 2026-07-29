@@ -30,8 +30,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))  # for itsm_oracle
 from itsm_oracle import MCPOracle, diff_db, oracle_available  # noqa: E402
 
-from eops_gym.domains.itsm.data_model import ItsmDB  # noqa: E402
-from eops_gym.domains.itsm.tools import ItsmTools  # noqa: E402
+from enterprise_worlds.domains.itsm.data_model import ItsmDB  # noqa: E402
+from enterprise_worlds.domains.itsm.tools import ItsmTools  # noqa: E402
 
 SEED_JSON = Path(__file__).resolve().parents[1] / "data" / "itsm" / "db.json"
 ACTING_USER = "USER_039"  # karen.watkins — an active ORG_001 admin in the 20-org seed
@@ -94,7 +94,7 @@ def _run_oracle(calls: list[tuple[str, dict]]) -> tuple[list[bool], MCPOracle]:
 def _normalize_member_ids(dump: dict) -> dict:
     """Neutralise a pure cross-export PK-label artifact in ``user_group_member``.
 
-    The port seed (``data/itsm/db.json``) labels its membership rows ``MEMBER_xxx`` while the
+    The port seed (``data/itsmbench/msp_db.json``) labels its membership rows ``MEMBER_xxx`` while the
     reference's canonical SQL seed labels the *identical* rows ``MEM_xxx``; every other column
     matches. That synthetic id is orthogonal to any tool call, so for state comparisons we re-key
     the rows by their natural ``(group_id, user_id)`` identity and drop the synthetic ``member_id``.

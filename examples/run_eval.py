@@ -1,6 +1,6 @@
 """Sample eval run via the programmatic API.
 
-Equivalent to ``eops run --domain itsm --num-tasks 1 --verbose`` but shows how to
+Equivalent to ``eworlds run --domain itsm --num-tasks 1 --verbose`` but shows how to
 drive a run from Python. Run with credentials loaded:
 
     set -a && source .env && set +a
@@ -9,8 +9,8 @@ drive a run from Python. Run with credentials loaded:
 
 import os
 
-from eops_gym.domains.itsm.environment import get_tasks
-from eops_gym.run import run_task
+from enterprise_worlds.domains.itsm.environment import get_tasks
+from enterprise_worlds.run import run_task
 
 AGENT_MODEL = os.environ.get("AGENT_MODEL", "gpt-4o")
 USER_MODEL = os.environ.get("USER_MODEL", "gpt-4o-mini")

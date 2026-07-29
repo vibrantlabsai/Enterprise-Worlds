@@ -12,11 +12,11 @@ import json
 
 import pytest
 
-from eops_gym.data_model.message import AssistantMessage, ToolCall, UserMessage
-from eops_gym.domains.itsm import environment as itsm_env
-from eops_gym.evaluator.evaluator import evaluate_task
-from eops_gym.orchestrator.orchestrator import Orchestrator
-from eops_gym.user.base import STOP
+from enterprise_worlds.data_model.message import AssistantMessage, ToolCall, UserMessage
+from enterprise_worlds.domains.itsm import environment as itsm_env
+from enterprise_worlds.evaluator.evaluator import evaluate_task
+from enterprise_worlds.orchestrator.orchestrator import Orchestrator
+from enterprise_worlds.user.base import STOP
 
 TASKS = itsm_env.get_tasks()
 
@@ -65,6 +65,7 @@ def _env_ctor_for(task):
     def ctor(db_delta=None):
         return itsm_env.get_environment(
             db_delta=db_delta, acting_user_id=task.acting_user_id,
+            org_id=task.org_id, org_ids=task.org_ids, seed_db=task.seed_db,
         )
 
     return ctor
@@ -78,7 +79,7 @@ def test_e2e_gold_trajectory_scores_full_reward(task, mocker):
                     for a in task.evaluation_criteria.nl_assertions]
     })
     mocker.patch(
-        "eops_gym.evaluator.evaluator_nl.generate",
+        "enterprise_worlds.evaluator.evaluator_nl.generate",
         return_value=AssistantMessage(content=judged),
     )
 

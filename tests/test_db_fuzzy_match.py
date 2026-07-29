@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import json
 
-from eops_gym.data_model.message import AssistantMessage
-from eops_gym.domains.itsm.data_model import Notification
-from eops_gym.domains.itsm.environment import get_environment
-import eops_gym.evaluator.text_match_strategy as _tms
-from eops_gym.evaluator.evaluator_env import compare_dbs
-from eops_gym.evaluator.text_match_strategy import TextMatchConfig
-from eops_gym.utils.text_match import fuzzy_text_match, text_overlap
+from enterprise_worlds.data_model.message import AssistantMessage
+from enterprise_worlds.domains.itsm.data_model import Notification
+from enterprise_worlds.domains.itsm.environment import get_environment
+import enterprise_worlds.evaluator.text_match_strategy as _tms
+from enterprise_worlds.evaluator.evaluator_env import compare_dbs
+from enterprise_worlds.evaluator.text_match_strategy import TextMatchConfig
+from enterprise_worlds.utils.text_match import fuzzy_text_match, text_overlap
 
 
 def test_fuzzy_text_match():

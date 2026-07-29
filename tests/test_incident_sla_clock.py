@@ -5,8 +5,8 @@ the env clock (like created_on/updated_on) when the caller omits it — making i
 the gold replay and the agent run instead of an agent-supplied, unguessable value.
 """
 
-from eops_gym.domains.itsm import environment as itsm_env
-from eops_gym.utils.clock import reset_now, set_now
+from enterprise_worlds.domains.itsm import environment as itsm_env
+from enterprise_worlds.utils.clock import reset_now, set_now
 
 
 def _tools(now: str):

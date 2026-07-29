@@ -14,9 +14,9 @@ enforced FK/format rule were wrong, loading the real seed would fail here).
 import pytest
 from pydantic import ValidationError
 
-from eops_gym.domains.itsm.data_model import ItsmDB
-from eops_gym.domains.itsm.environment import ITSM_DB_PATH
-from eops_gym.environment.delta import apply_delta
+from enterprise_worlds.domains.itsm.data_model import ItsmDB
+from enterprise_worlds.domains.itsm.environment import ITSM_DB_PATH
+from enterprise_worlds.environment.delta import apply_delta
 
 
 @pytest.fixture
