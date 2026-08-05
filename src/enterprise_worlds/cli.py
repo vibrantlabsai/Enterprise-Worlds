@@ -5,25 +5,22 @@ Command-line interface:
     eworlds run    --domain itsm [--task-ids ...] [--agent-llm ...] [--user-llm ...]
     eworlds tasks  --domain itsm
     eworlds domain itsm
+    eworlds serve
+
+Gym imports are deferred into the command functions: ``eworlds serve`` speaks the wire protocol on
+stdout, so nothing that might print at import time (litellm, the domain stack) may load before the
+server has redirected ``sys.stdout`` — which is also why :func:`main` dispatches ``serve`` before
+building the other subparsers.
 """
 
 import argparse
 import sys
 
-from enterprise_worlds.run import (
-    DEFAULT_LLM_AGENT,
-    TaskResult,
-    dump_trial_result,
-    get_domain,
-    list_domains,
-    run_domain,
-    save_run_dir,
-)
-from enterprise_worlds.config import DEFAULT_LLM_NL_JUDGE, DEFAULT_LLM_USER
-from enterprise_worlds.utils.io_utils import dump_file
-
 
 def add_run_args(parser: argparse.ArgumentParser) -> None:
+    from enterprise_worlds.config import DEFAULT_LLM_NL_JUDGE, DEFAULT_LLM_USER
+    from enterprise_worlds.run import DEFAULT_LLM_AGENT, list_domains
+
     parser.add_argument(
         "--domain", "-d", type=str, default="itsm", choices=list_domains(),
         help="The domain to run the eval on. Default is itsm.",
@@ -74,7 +71,7 @@ def add_run_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _print_task_result(result: TaskResult, verbose: bool) -> None:
+def _print_task_result(result: "TaskResult", verbose: bool) -> None:  # noqa: F821 - imported lazily
     print(f"\n=== {result.task_id}  (trial {result.trial}) ===")
     if verbose:
         for msg in result.trajectory:
@@ -96,6 +93,9 @@ def _print_task_result(result: TaskResult, verbose: bool) -> None:
 
 
 def run_run(args: argparse.Namespace) -> None:
+    from enterprise_worlds.run import TaskResult, dump_trial_result, run_domain, save_run_dir
+    from enterprise_worlds.utils.io_utils import dump_file
+
     # When --log-dir is set, persist each trial's trajectory AS IT COMPLETES (not only at the end),
     # so an interrupted/crashed run keeps the trajectories already produced.
     def on_result(r: TaskResult) -> None:
@@ -134,6 +134,8 @@ def run_run(args: argparse.Namespace) -> None:
 
 
 def run_tasks(args: argparse.Namespace) -> None:
+    from enterprise_worlds.run import get_domain
+
     spec = get_domain(args.domain)
     for task in spec.get_tasks():
         persona = task.scenario.persona
@@ -149,11 +151,33 @@ def run_tasks(args: argparse.Namespace) -> None:
 
 
 def run_show_domain(args: argparse.Namespace) -> None:
+    from enterprise_worlds.run import get_domain
+
     spec = get_domain(args.domain)
     print(spec.policy_path.read_text(encoding="utf-8"))
 
 
+def run_serve(args: argparse.Namespace) -> None:
+    from enterprise_worlds.platform.server import main as serve_main
+
+    serve_main()
+
+
 def main() -> None:
+    # `serve` must not wait for the other subparsers to be built: their `choices=list_domains()`
+    # imports the domain stack, whose import-time output would land on the wire (stdout) before the
+    # server can redirect it. A minimal parser still runs first so `serve --help` prints help and a
+    # stray argument exits 2 with usage, like every other subcommand — instead of starting the wire.
+    if sys.argv[1:2] == ["serve"]:
+        argparse.ArgumentParser(
+            prog="eworlds serve",
+            description="Answer the gym wire protocol (JSON-RPC 2.0, one message per line) over stdio",
+        ).parse_args(sys.argv[2:])
+        run_serve(argparse.Namespace())
+        return
+
+    from enterprise_worlds.run import list_domains
+
     parser = argparse.ArgumentParser(prog="eworlds", description="Enterprise-Worlds command line interface")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -168,6 +192,11 @@ def main() -> None:
     domain_parser = subparsers.add_parser("domain", help="Show a domain's policy")
     domain_parser.add_argument("domain", type=str, choices=list_domains(), help="Domain name")
     domain_parser.set_defaults(func=run_show_domain)
+
+    serve_parser = subparsers.add_parser(
+        "serve", help="Answer the gym wire protocol (JSON-RPC 2.0, one message per line) over stdio"
+    )
+    serve_parser.set_defaults(func=run_serve)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):

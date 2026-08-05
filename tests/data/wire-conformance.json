@@ -1,0 +1,217 @@
+{
+  "$comment": [
+    "Shared conformance cases for the gym wire protocol. Read by gym-contract/test/wire.test.ts and",
+    "by task-generation/bridge/test_wire.py, so the TypeScript and Python implementations are held to",
+    "the same answers rather than to each other's behaviour.",
+    "",
+    "`accept` lines must decode, and to the variant named. `reject` lines must not, with the error code",
+    "given. Add a case here when you find a message the two sides could disagree about; a case that",
+    "only one language can express belongs in that language's own test file."
+  ],
+  "accept": [
+    {
+      "why": "a request with params",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"gym.describe\",\"params\":{\"a\":1}}",
+      "kind": "request",
+      "id": 1,
+      "method": "gym.describe"
+    },
+    {
+      "why": "a request may omit params entirely",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"gym.health\"}",
+      "kind": "request",
+      "id": 2,
+      "method": "gym.health"
+    },
+    {
+      "why": "id 0 is a valid id and must not be treated as absent",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"gym.health\"}",
+      "kind": "request",
+      "id": 0,
+      "method": "gym.health"
+    },
+    {
+      "why": "a negative id is still an integer",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":-1,\"method\":\"gym.health\"}",
+      "kind": "request",
+      "id": -1,
+      "method": "gym.health"
+    },
+    {
+      "why": "a success reply",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ready\":true}}",
+      "kind": "success",
+      "id": 1
+    },
+    {
+      "why": "a null result is a result, not an absent one",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":null}",
+      "kind": "success",
+      "id": 1
+    },
+    {
+      "why": "a false result is a result",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":false}",
+      "kind": "success",
+      "id": 1
+    },
+    {
+      "why": "a failure reply",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"no such method\"}}",
+      "kind": "failure",
+      "id": 1,
+      "code": -32601
+    },
+    {
+      "why": "a failure for a message whose id could not be recovered carries a null id",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"bad json\"}}",
+      "kind": "failure",
+      "id": null,
+      "code": -32700
+    },
+    {
+      "why": "unknown members are ignored, so a newer peer can add them without breaking an older one",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"gym.health\",\"extra\":\"ignored\"}",
+      "kind": "request",
+      "id": 7,
+      "method": "gym.health"
+    },
+    {
+      "why": "an unknown method decodes; whether it is served is the dispatcher's business",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"totally.made.up\"}",
+      "kind": "request",
+      "id": 8,
+      "method": "totally.made.up"
+    },
+    {
+      "why": "an escaped newline inside a string stays within one line",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"custom\",\"params\":{\"text\":\"a\\nb\"}}",
+      "kind": "request",
+      "id": 9,
+      "method": "custom"
+    },
+    {
+      "why": "an id written as 1.0, which parses to the same value as 1",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1.0,\"method\":\"gym.health\"}",
+      "kind": "request",
+      "id": 1,
+      "method": "gym.health"
+    },
+    {
+      "why": "an id in exponent form",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1e2,\"method\":\"gym.health\"}",
+      "kind": "request",
+      "id": 100,
+      "method": "gym.health"
+    },
+    {
+      "why": "an error code written with a trailing zero",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601.0,\"message\":\"no such method\"}}",
+      "kind": "failure",
+      "id": 1,
+      "code": -32601
+    }
+  ],
+  "reject": [
+    {
+      "why": "not JSON at all",
+      "line": "not json",
+      "code": -32700
+    },
+    {
+      "why": "an empty line",
+      "line": "",
+      "code": -32700
+    },
+    {
+      "why": "a batch, which this protocol does not use",
+      "line": "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"gym.health\"}]",
+      "code": -32600
+    },
+    {
+      "why": "a bare JSON value",
+      "line": "42",
+      "code": -32600
+    },
+    {
+      "why": "JSON null",
+      "line": "null",
+      "code": -32600
+    },
+    {
+      "why": "a bare string",
+      "line": "\"hello\"",
+      "code": -32600
+    },
+    {
+      "why": "missing the jsonrpc member",
+      "line": "{\"id\":1,\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "the wrong protocol version",
+      "line": "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "a numeric protocol version",
+      "line": "{\"jsonrpc\":2.0,\"id\":1,\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "a request with no id",
+      "line": "{\"jsonrpc\":\"2.0\",\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "a request with a null id",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "a string id, which the two sides would disagree about",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "a boolean id",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "a reply with a string id",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":1}",
+      "code": -32600
+    },
+    {
+      "why": "a reply carrying neither result nor error",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1}",
+      "code": -32600
+    },
+    {
+      "why": "a fractional id, which is not an id in either language",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"gym.health\"}",
+      "code": -32600
+    },
+    {
+      "why": "a fractional error code",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":1.5,\"message\":\"m\"}}",
+      "code": -32600
+    },
+    {
+      "why": "an error code so large it parses to Infinity",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":1e400,\"message\":\"m\"}}",
+      "code": -32600
+    },
+    {
+      "why": "NaN, which Python accepts by default and JavaScript never does",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":NaN}",
+      "code": -32700
+    },
+    {
+      "why": "Infinity, for the same reason",
+      "line": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":Infinity}",
+      "code": -32700
+    }
+  ]
+}
