@@ -107,6 +107,43 @@ INCIDENT_SLA_STAGE = frozenset(
     {"in_progress", "paused", "completed", "cancelled", "breached"}
 )
 
+# -- lifecycle state machines -------------------------------------------------------------------
+# from-state -> states it may transition to (enforced by ``ItsmToolsBase._check_*_transition``).
+# A target absent from the set is illegal; a state mapped to the empty set is terminal.
+INCIDENT_TRANSITIONS = {  # §3.3
+    "new": frozenset({"in_progress", "on_hold", "resolved", "canceled"}),
+    "in_progress": frozenset({"on_hold", "resolved", "canceled"}),
+    "on_hold": frozenset({"in_progress"}),
+    "resolved": frozenset({"closed", "in_progress"}),
+    "closed": frozenset({"in_progress"}),  # manager reopen (§3.3); the role check is verifier-side
+    "canceled": frozenset(),
+}
+CHANGE_TRANSITIONS = {  # §4.2 (incl. standard/emergency shortcuts)
+    "new": frozenset({"assess", "authorize", "canceled"}),
+    "assess": frozenset({"authorize", "canceled"}),
+    "authorize": frozenset({"scheduled", "implement", "canceled"}),
+    "scheduled": frozenset({"implement", "canceled"}),
+    "implement": frozenset({"review"}),
+    "review": frozenset({"closed", "implement"}),
+    "closed": frozenset(),
+    "canceled": frozenset(),
+}
+CI_TRANSITIONS = {  # §5.1
+    "in_stock": frozenset({"in_use", "maintenance", "retired"}),
+    "in_use": frozenset({"maintenance", "in_stock", "retired"}),
+    "maintenance": frozenset({"in_use", "in_stock", "retired"}),
+    "retired": frozenset({"disposed"}),
+    "disposed": frozenset(),
+}
+
+# target-state -> fields that must be non-empty when transitioning into it. rollback_plan and the
+# sys_approval gate from §4.2 have no backing schema field, so only fields that exist are listed.
+INCIDENT_REQUIRED_ON = {"resolved": ("resolution_code", "resolution_notes")}  # §3.3
+CHANGE_REQUIRED_ON = {  # §4.2
+    "scheduled": ("implementation_plan",),
+    "closed": ("close_code", "close_notes"),
+}
+
 
 #: Optional lookup of every set by a stable name (useful for tests / introspection).
 ALL_ENUMS: Dict[str, FrozenSet[str]] = {

@@ -296,6 +296,7 @@ class ChangeToolsMixin(ItsmToolsBase):
                 code="NO_CHANGES_DETECTED",
             )
 
+        self._check_change_transition(change, provided)
         for field, value in provided.items():
             setattr(change, field, value)
         change.updated_on = self._now()

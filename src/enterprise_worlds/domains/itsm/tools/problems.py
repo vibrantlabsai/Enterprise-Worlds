@@ -291,6 +291,7 @@ class ProblemToolsMixin(ItsmToolsBase):
                 "No changes detected for fields: " + detail,
                 code="NO_CHANGES_DETECTED",
             )
+        self._check_problem_transition(problem, active.get("status"))
         for field, value in active.items():
             setattr(problem, field, value)
         problem.updated_on = self._now()

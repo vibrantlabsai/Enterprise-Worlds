@@ -355,6 +355,7 @@ class IncidentToolsMixin(ItsmToolsBase):
                 "No changes detected for fields: " + ", ".join(provided),
                 code="NO_CHANGES_DETECTED",
             )
+        self._check_incident_transition(incident, provided)
         for field, value in changed.items():
             setattr(incident, field, value)
         incident.updated_at = self._now()

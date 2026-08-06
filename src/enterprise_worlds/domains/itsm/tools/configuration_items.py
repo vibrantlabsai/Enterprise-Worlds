@@ -229,6 +229,7 @@ class ConfigurationItemToolsMixin(ItsmToolsBase):
                 field="configuration_item_id",
             )
 
+        self._check_configuration_item_transition(ci, status)
         for field, new_value in changes.items():
             setattr(ci, field, new_value)
         if status is not None:

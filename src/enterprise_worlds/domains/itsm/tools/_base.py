@@ -11,8 +11,9 @@ DB state for hash matching. Behaviour mirrors the live MCP (see ``docs/itsm_buil
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
+from enterprise_worlds.domains.itsm import enums
 from enterprise_worlds.domains.itsm.data_model import ItsmDB
 from enterprise_worlds.environment.toolkit import ToolKitBase
 from enterprise_worlds.utils.clock import get_now
@@ -117,6 +118,62 @@ class ItsmToolsBase(ToolKitBase):
                 "String should have at least 1 character",
                 code="VALIDATION_ERROR",
                 field=field,
+            )
+
+    # -- lifecycle transition validation ------------------------------------
+    def _assert_transition(
+        self, entity: str, table: "dict[str, frozenset[str]]", current: str, new: Optional[str]
+    ) -> None:
+        if new is None or new == current:
+            return
+        if new not in table.get(current, frozenset()):
+            raise ItsmError(
+                f"{entity} status transition {current!r} -> {new!r} is not permitted by policy",
+                code="TRANSITION_NOT_ALLOWED",
+                field="status",
+            )
+
+    def _assert_required_on(
+        self, entity: str, required_on: dict, new: str, record: Any, updates: dict
+    ) -> None:
+        for field in required_on.get(new, ()):
+            value = updates.get(field)
+            if value is None:
+                value = getattr(record, field, None)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                raise ItsmError(
+                    f"{entity} status {new!r} requires {field}",
+                    code="VALIDATION_ERROR",
+                    field=field,
+                )
+
+    def _check_incident_transition(self, record: Any, updates: dict) -> None:
+        """Enforce the §3.3 incident lifecycle and its resolve-time required fields."""
+        new = updates.get("status")
+        self._assert_transition("incident", enums.INCIDENT_TRANSITIONS, record.status, new)
+        if new is not None and new != record.status:
+            self._assert_required_on("incident", enums.INCIDENT_REQUIRED_ON, new, record, updates)
+
+    def _check_change_transition(self, record: Any, updates: dict) -> None:
+        """Enforce the §4.2 change lifecycle and its schedule/close required fields."""
+        new = updates.get("status")
+        self._assert_transition("change", enums.CHANGE_TRANSITIONS, record.status, new)
+        if new is not None and new != record.status:
+            self._assert_required_on("change", enums.CHANGE_REQUIRED_ON, new, record, updates)
+
+    def _check_configuration_item_transition(self, record: Any, new_status: Optional[str]) -> None:
+        """Enforce the §5.1 CI lifecycle."""
+        self._assert_transition(
+            "configuration_item", enums.CI_TRANSITIONS, record.status, new_status
+        )
+
+    def _check_problem_transition(self, record: Any, new_status: Optional[str]) -> None:
+        """§4.3 defines a final state but no ordered table, so only closed is guarded."""
+        if new_status is not None and new_status != record.status and record.status == "closed":
+            raise ItsmError(
+                "problem is closed (terminal); reopening is not permitted by policy",
+                code="TRANSITION_NOT_ALLOWED",
+                field="status",
             )
 
     # -- existence checks ---------------------------------------------------
