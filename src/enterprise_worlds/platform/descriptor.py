@@ -23,6 +23,36 @@ DISPLAY_NAME = "EnterpriseOps ITSM"
 # answer CAPABILITY_UNSUPPORTED). The session.create/close/callTool baseline has no capability string.
 CAPABILITIES: list[str] = ["materializeState", "rollout", "cancelRollout"]
 
+# The shape of the world: a StateSnapshot's `state` is a record store (collection -> record_id ->
+# record) a client may load and diff. queryState is not served, so the query language is "none" —
+# the platform loads snapshots into its own SQLite rather than asking the gym.
+STATE_DESCRIPTOR = {
+    "kind": "record_store",
+    "diffRenderer": "collection_record_field",
+    "query": {"language": "none"},
+}
+
+# The shape of an episode, so a transcript renders two-sided without guessing.
+EPISODE = {
+    "kind": "conversational",
+    "participants": [
+        {"role": "assistant", "label": "Agent", "side": "left"},
+        {"role": "user", "label": "User", "side": "right"},
+        {"role": "tool", "label": "Tools", "side": "left"},
+    ],
+}
+
+# What a trial reports, keyed into RolloutRunOutcome.diagnostics.
+GRADING = {
+    "signals": [
+        {"key": "db_match", "label": "DB match", "kind": "bool"},
+    ],
+    "rewardRule": (
+        "Reward = (gold-action DB match) × (all NL assertions met); a trial passes at reward 1.0. "
+        "Either criterion may be absent, and an absent one does not gate."
+    ),
+}
+
 # Models this gym can be evaluated against. `sarvam` is the default: it is the band model the miner
 # itself uses for pass@k, so an edited revision's evidence is comparable with the mining evidence it
 # replaces.
@@ -178,6 +208,9 @@ def build_descriptor(gym_commit_sha: Optional[str] = None) -> Dict[str, Any]:
         "reviewPrimer": REVIEW_PRIMER,
         "rolloutTargets": [dict(t) for t in ROLLOUT_TARGETS],
         "taskView": TASK_VIEW,
+        "state": STATE_DESCRIPTOR,
+        "episode": EPISODE,
+        "grading": GRADING,
     }
     if gym_commit_sha:
         descriptor["gymCommitSha"] = gym_commit_sha

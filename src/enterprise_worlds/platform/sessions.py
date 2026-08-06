@@ -57,6 +57,17 @@ class SessionRegistry:
             if not isinstance(cfg, dict):
                 raise WireFailure(WireErrorCode.INVALID_PARAMS, "gymConfig must be an object",
                                   kind="invalid_params", retryable=False)
+            # The gym has two gymConfig dialects: the ROLLOUT one (userModel/judgeModel/maxSteps…)
+            # and this world one (seed_db/org_ids/acting_user_id…). Passing the former here would
+            # silently build an unscoped default world; refuse loudly instead.
+            rollout_keys = {"userModel", "judgeModel", "maxSteps", "freeTextMatch", "targetModel", "kRuns"}
+            if rollout_keys & set(cfg):
+                raise WireFailure(
+                    WireErrorCode.INVALID_PARAMS,
+                    "gymConfig looks like a rollout config (%s); a world spec takes "
+                    "seed_db/db, org_ids, acting_user_id, initial_state_delta, current_time"
+                    % ", ".join(sorted(rollout_keys & set(cfg))),
+                    kind="invalid_params", retryable=False)
             clock = spec.get("clock") or cfg.get("current_time") or DEFAULT_NOW
             env = _state.build_environment(
                 db_delta=cfg.get("initial_state_delta") or cfg.get("delta"),

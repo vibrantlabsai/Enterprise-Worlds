@@ -26,6 +26,23 @@ def jsonable(value: Any) -> Any:
     return value
 
 
+def stringify(result: Any) -> Any:
+    """A tool result as the one-line STRING the stored-evidence schemas expect.
+
+    The miner bridge and the environment's own transcript renderer both store tool results this way
+    (pydantic ``model_dump_json`` for models), and the platform's ``OracleNodeExecutionSchema``
+    types the field ``string`` — a structured value there fails re-import of promoted evidence.
+    ``None`` stays ``None`` (the field is optional, not the string "None").
+    """
+    if result is None:
+        return None
+    if hasattr(result, "model_dump_json"):
+        return result.model_dump_json()
+    if isinstance(result, list):
+        return "[" + ", ".join(stringify(r) or "null" for r in result) + "]"
+    return str(result)
+
+
 def to_transcript(trajectory: List[Message]) -> List[dict]:
     """The contract's ``TranscriptMessage[]`` for a gym trajectory.
 

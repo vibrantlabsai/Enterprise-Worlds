@@ -57,6 +57,20 @@ def test_scoped_world_closes_over_foreign_keys():
     assert kept_out_of_scope, "closure kept nothing out-of-scope — did the slice degrade to an org filter?"
     assert dropped_out_of_scope, "nothing was sliced away — is the scope the whole world?"
 
+    # And "closure" means REFERENCED, not merely non-empty: every kept out-of-scope record must be
+    # the target of a foreign key on some kept record, and no kept record may point at a dropped
+    # one. A buggy slicer keeping an arbitrary out-of-scope subset fails one of these.
+    referenced = {
+        (target, rec.get(field))
+        for coll, recs in state.items() for rec in recs.values() if isinstance(rec, dict)
+        for field, target, kind in itsm_data._FK_FIELDS.get(coll, []) if kind == "pk"
+        if rec.get(field) is not None
+    }
+    for coll, rid in kept_out_of_scope:
+        assert (coll, rid) in referenced, f"kept {coll}/{rid} is referenced by nothing in the slice"
+    for coll, rid in dropped_out_of_scope:
+        assert (coll, rid) not in referenced, f"dropped {coll}/{rid} is still referenced from the slice"
+
 
 def test_delta_applies_before_the_slice():
     task = _msp_task()
@@ -98,12 +112,15 @@ def test_missing_fk_spec_is_fine_for_an_unscoped_task(monkeypatch, tmp_path):
     assert set(state["organization"]) == set(_raw_seed()["organization"])
 
 
-def test_provenance_names_the_seed_scope_and_clock():
+def test_provenance_names_the_seed_scope_and_resolved_clock():
     task = _msp_task()
     provenance = materialize_state(task.model_dump())["provenance"]
     assert provenance["seed_db"] == "msp_db.json"
     assert provenance["org_ids"] == sorted(task.org_ids)
-    assert provenance["clock"] == (task.current_time or "2024-06-01 00:00:00")
+    # The RESOLVED clock — seed format, the form the state's timestamps are actually stamped in —
+    # not the raw ISO spelling the task requested.
+    expected = (task.current_time or "2024-06-01 00:00:00").replace("T", " ")
+    assert provenance["clock"] == expected
 
 
 def test_an_invalid_task_is_invalid_params_not_an_internal_error():
@@ -154,6 +171,25 @@ def test_the_session_clock_drives_tool_timestamps():
     sid = reg.create(dict(WORLD_SPEC))
     result = reg.call_tool(sid, "add_location", dict(LOCATION_ARGS))["result"]
     assert result["created_on"] == "2025-01-02 03:04:05"  # the clock, in seed format
+
+
+def test_a_task_sessions_clock_is_driven_by_the_tasks_current_time():
+    task = _msp_task()
+    assert task.current_time, "fixture task must carry current_time or this test is vacuous"
+    reg = SessionRegistry()
+    sid = reg.create({"kind": "task", "task": task.model_dump()})  # no explicit spec.clock
+    result = reg.call_tool(sid, "add_location", dict(LOCATION_ARGS))["result"]
+    assert result["created_on"] == task.current_time.replace("T", " ")
+
+
+def test_a_world_spec_carrying_a_rollout_config_is_refused_loudly():
+    # The rollout gymConfig dialect (userModel/maxSteps/...) silently built an unscoped default
+    # world here once; now it is an INVALID_PARAMS naming the offending keys.
+    reg = SessionRegistry()
+    with pytest.raises(WireFailure) as exc:
+        reg.create({"kind": "world", "gymConfig": {"userModel": "x", "maxSteps": 16, "db": "msp_db.json"}})
+    assert exc.value.code == wire.WireErrorCode.INVALID_PARAMS
+    assert "rollout config" in str(exc.value)
 
 
 def test_close_releases_and_afterwards_is_session_not_found():

@@ -22,7 +22,7 @@ from enterprise_worlds.domains.itsm import environment as _itsm_env
 from enterprise_worlds.environment.environment import Environment
 from enterprise_worlds.platform.errors import WireFailure
 from enterprise_worlds.platform.wire import WireErrorCode
-from enterprise_worlds.utils.clock import DEFAULT_NOW, reset_now, set_now
+from enterprise_worlds.utils.clock import DEFAULT_NOW, _to_seed_format, reset_now, set_now
 
 
 def decode_task(raw: Any) -> Task:
@@ -90,6 +90,8 @@ def materialize_state(raw_task: Any) -> Dict[str, Any]:
             "seed_db": _itsm_env._itsm_db_path(task.seed_db).name,
             "org_ids": sorted(task.org_ids) if task.org_ids else ([task.org_id] if task.org_id else None),
             "delta_applied": task.initial_state_delta is not None,
-            "clock": clock,
+            # The RESOLVED clock — the canonicalised form every timestamp in `state` is stamped
+            # with — not the ISO spelling the task requested it in.
+            "clock": _to_seed_format(clock),
         },
     }
