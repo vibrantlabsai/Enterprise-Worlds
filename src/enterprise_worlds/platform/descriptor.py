@@ -19,9 +19,9 @@ DISPLAY_NAME = "EnterpriseOps ITSM"
 
 # Declared ONLY for what `eworlds serve` actually implements — an over-claim becomes a failure at
 # the call site; an under-claim is a graceful skip. Add each capability string AS the corresponding
-# method is implemented, never ahead of it. (Known strings: materializeState, queryState, verify,
-# rollout, cancelRollout.)
-CAPABILITIES: list[str] = []
+# method is implemented, never ahead of it. Still absent: queryState, verify (their session.* methods
+# answer CAPABILITY_UNSUPPORTED). The session.create/close/callTool baseline has no capability string.
+CAPABILITIES: list[str] = ["materializeState", "rollout", "cancelRollout"]
 
 # Models this gym can be evaluated against. `sarvam` is the default: it is the band model the miner
 # itself uses for pass@k, so an edited revision's evidence is comparable with the mining evidence it

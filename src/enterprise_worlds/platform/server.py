@@ -5,9 +5,12 @@ implemented for this side by the vendored ``wire.py``. The platform calls the gy
 and never initiates. A gym that needs a model reaches it directly with configuration handed to it at
 startup (litellm reads credentials from the environment), so there is no callback channel here.
 
-Served today: ``gym.initialize``, ``gym.describe``, ``gym.health``. Every other contract method
-answers ``CAPABILITY_UNSUPPORTED`` until it is implemented — and gains its ``capabilities`` entry in
-the descriptor only then.
+Served today: ``gym.initialize``, ``gym.describe``, ``gym.health``, ``gym.materializeState``,
+``session.create``/``close``/``callTool`` and ``rollout.submit``/``status``/``result``/``cancel``.
+The remaining contract methods (``session.queryState``, ``session.verify``) answer
+``CAPABILITY_UNSUPPORTED`` until they are implemented — and gain their ``capabilities`` entry in the
+descriptor only then. Rollout trials run on worker threads; only this dispatch loop ever writes to
+the wire.
 
 This module is imported before :func:`main` redirects ``sys.stdout``, so its module level must stay
 free of gym imports: anything the gym prints at import time would land on the wire. Gym modules are
@@ -23,24 +26,19 @@ from typing import Any, Dict, Optional, TextIO
 
 from enterprise_worlds.platform import descriptor as _descriptor
 from enterprise_worlds.platform import wire
+from enterprise_worlds.platform.errors import WireFailure as _Failure
 from enterprise_worlds.platform.wire import PROTOCOL_VERSION, WireErrorCode, WireMethod
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
-_IMPLEMENTED = frozenset({WireMethod.INITIALIZE, WireMethod.DESCRIBE, WireMethod.HEALTH})
+_IMPLEMENTED = frozenset({
+    WireMethod.INITIALIZE, WireMethod.DESCRIBE, WireMethod.HEALTH,
+    WireMethod.MATERIALIZE_STATE,
+    WireMethod.SESSION_CREATE, WireMethod.SESSION_CLOSE, WireMethod.SESSION_CALL_TOOL,
+    WireMethod.ROLLOUT_SUBMIT, WireMethod.ROLLOUT_STATUS,
+    WireMethod.ROLLOUT_RESULT, WireMethod.ROLLOUT_CANCEL,
+})
 _KNOWN = frozenset(v for k, v in vars(WireMethod).items() if not k.startswith("_"))
-
-
-class _Failure(Exception):
-    """A handler outcome that is a protocol error rather than a result."""
-
-    def __init__(self, code: int, message: str, *, kind: Optional[str] = None,
-                 retryable: Optional[bool] = None, details: Any = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.kind = kind
-        self.retryable = retryable
-        self.details = details
 
 
 _sha_cache: Optional[Dict[str, Optional[str]]] = None
@@ -80,6 +78,10 @@ class Server:
         self.out = out
         self._initialized = False
         self._role: Optional[str] = None
+        # Created on first use: their modules import the gym stack, which must not load before the
+        # stdout redirect in main().
+        self._sessions = None
+        self._jobs = None
 
     # ── wire ──────────────────────────────────────────────────────────────
 
@@ -157,6 +159,28 @@ class Server:
             return _descriptor.build_descriptor(gym_commit_sha())
         if method == WireMethod.HEALTH:
             return self._health()
+        if method == WireMethod.MATERIALIZE_STATE:
+            from enterprise_worlds.platform.state import materialize_state
+
+            return materialize_state(params.get("task"))
+        if method == WireMethod.SESSION_CREATE:
+            return {"sessionId": self._session_registry().create(params.get("spec"))}
+        if method == WireMethod.SESSION_CLOSE:
+            self._session_registry().close(params.get("sessionId"))
+            return None
+        if method == WireMethod.SESSION_CALL_TOOL:
+            return self._session_registry().call_tool(
+                params.get("sessionId"), params.get("name"), params.get("args"))
+        if method == WireMethod.ROLLOUT_SUBMIT:
+            return {"jobId": self._job_registry().submit(
+                params.get("task"), params.get("config"), params.get("idempotencyKey"))}
+        if method == WireMethod.ROLLOUT_STATUS:
+            return self._job_registry().status(params.get("jobId"))
+        if method == WireMethod.ROLLOUT_RESULT:
+            return self._job_registry().result(params.get("jobId"))
+        if method == WireMethod.ROLLOUT_CANCEL:
+            self._job_registry().cancel(params.get("jobId"))
+            return None
         if method == WireMethod.CUSTOM:
             # A platform never calls `custom` (wire.ts `isCallableBy`); a miner may, but this gym
             # has agreed no custom operations with anyone.
@@ -177,6 +201,20 @@ class Server:
                        details={"known": sorted(_IMPLEMENTED)})
 
     # ── handlers ──────────────────────────────────────────────────────────
+
+    def _session_registry(self):
+        if self._sessions is None:
+            from enterprise_worlds.platform.sessions import SessionRegistry
+
+            self._sessions = SessionRegistry()
+        return self._sessions
+
+    def _job_registry(self):
+        if self._jobs is None:
+            from enterprise_worlds.platform.rollout import JobRegistry
+
+            self._jobs = JobRegistry()
+        return self._jobs
 
     def _initialize(self, params: dict) -> dict:
         client_max = _integral(params.get("protocolVersion"))

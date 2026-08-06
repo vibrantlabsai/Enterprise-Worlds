@@ -74,9 +74,9 @@ def test_describe_serves_the_descriptor_with_the_policy_text_inline():
     assert descriptor["protocolVersion"] == 1
     assert descriptor["gymId"] == "itsm"
     assert descriptor["displayName"] == "EnterpriseOps ITSM"
-    # Nothing is implemented beyond the handshake yet, and an over-claim becomes a failure at the
-    # call site — so the descriptor must claim nothing.
-    assert descriptor["capabilities"] == []
+    # Exactly what is implemented, nothing ahead of it: an over-claim becomes a failure at the call
+    # site. queryState/verify stay absent until their methods ship; sessions are baseline (no string).
+    assert descriptor["capabilities"] == ["materializeState", "rollout", "cancelRollout"]
     # The rules themselves, not a pointer to them.
     policy_on_disk = (REPO_ROOT / "data" / "itsmbench" / "policy.md").read_text(encoding="utf-8")
     assert descriptor["policy"] == policy_on_disk
@@ -95,7 +95,7 @@ def test_health_reports_ready():
 
 
 def test_a_contract_method_not_served_yet_is_capability_unsupported():
-    for method in ("gym.materializeState", "session.create", "session.callTool", "rollout.submit"):
+    for method in ("session.queryState", "session.verify"):
         replies = drive(INITIALIZE, req(2, method))
         assert replies[1]["error"]["code"] == wire.WireErrorCode.CAPABILITY_UNSUPPORTED, method
 
