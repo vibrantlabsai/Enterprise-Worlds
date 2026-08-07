@@ -182,15 +182,15 @@ class Server:
             self._job_registry().cancel(params.get("jobId"))
             return None
         if method == WireMethod.CUSTOM:
-            # A platform never calls `custom` (wire.ts `isCallableBy`); a miner may, but this gym
-            # has agreed no custom operations with anyone.
-            if self._role == "miner":
-                raise _Failure(WireErrorCode.UNKNOWN_CUSTOM_OP,
-                               "this gym defines no custom operations",
-                               kind="unknown_custom_op", retryable=False)
-            raise _Failure(WireErrorCode.CUSTOM_FORBIDDEN,
-                           "custom operations are not available to a platform caller",
-                           kind="custom_forbidden", retryable=False)
+            # A platform never calls `custom` (wire.ts `isCallableBy`); the six miner operations —
+            # the synthesis half of mining — live behind it for a miner-role connection.
+            if self._role != "miner":
+                raise _Failure(WireErrorCode.CUSTOM_FORBIDDEN,
+                               "custom operations are not available to a platform caller",
+                               kind="custom_forbidden", retryable=False)
+            from enterprise_worlds.platform import custom
+
+            return custom.dispatch(self._session_registry(), params)
         if method in _KNOWN:
             raise _Failure(WireErrorCode.CAPABILITY_UNSUPPORTED,
                            f"this gym does not offer {method} yet; see gym.describe capabilities",

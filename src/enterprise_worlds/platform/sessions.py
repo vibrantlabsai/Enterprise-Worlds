@@ -24,9 +24,19 @@ from enterprise_worlds.utils.clock import DEFAULT_NOW, reset_now, set_now
 
 
 class _Session:
-    def __init__(self, env: Environment, clock: str) -> None:
+    def __init__(self, env: Environment, clock: str, *, delta: Any = None,
+                 acting_user_id: Optional[str] = None, org_id: Optional[str] = None,
+                 org_ids: Optional[list] = None, seed_db: Optional[str] = None) -> None:
         self.env = env
         self.clock = clock
+        # How this world was built. The miner's `dbHashEval` rebuilds a GOLD world that must be
+        # comparable to this one — same delta, same acting user (attribution-writing tools), same
+        # scope and seed — so the session keeps its own recipe.
+        self.delta = delta
+        self.acting_user_id = acting_user_id
+        self.org_id = org_id
+        self.org_ids = org_ids
+        self.seed_db = seed_db
         # A session belongs to one caller at a time; a second call while one is being served is
         # SESSION_BUSY, which is the retryable kind of failure.
         self.lock = threading.Lock()
@@ -48,6 +58,10 @@ class SessionRegistry:
         if kind == "task":
             task = _state.decode_task(spec.get("task"))
             clock = spec.get("clock") or task.current_time or DEFAULT_NOW
+            recipe: Dict[str, Any] = {
+                "delta": task.initial_state_delta, "acting_user_id": task.acting_user_id,
+                "org_id": task.org_id, "org_ids": task.org_ids, "seed_db": task.seed_db,
+            }
             env = _state.build_environment(
                 db_delta=task.initial_state_delta, acting_user_id=task.acting_user_id,
                 org_id=task.org_id, org_ids=task.org_ids, seed_db=task.seed_db, clock=clock,
@@ -69,12 +83,15 @@ class SessionRegistry:
                     % ", ".join(sorted(rollout_keys & set(cfg))),
                     kind="invalid_params", retryable=False)
             clock = spec.get("clock") or cfg.get("current_time") or DEFAULT_NOW
-            env = _state.build_environment(
-                db_delta=cfg.get("initial_state_delta") or cfg.get("delta"),
-                acting_user_id=cfg.get("acting_user_id"),
-                org_id=cfg.get("org_id"), org_ids=cfg.get("org_ids"),
-                seed_db=cfg.get("seed_db") or cfg.get("db"), clock=clock,
-            )
+            recipe = {
+                "delta": cfg.get("initial_state_delta") or cfg.get("delta"),
+                "acting_user_id": cfg.get("acting_user_id"),
+                "org_id": cfg.get("org_id"), "org_ids": cfg.get("org_ids"),
+                "seed_db": cfg.get("seed_db") or cfg.get("db"),
+            }
+            env = _state.build_environment(db_delta=recipe["delta"], acting_user_id=recipe["acting_user_id"],
+                                           org_id=recipe["org_id"], org_ids=recipe["org_ids"],
+                                           seed_db=recipe["seed_db"], clock=clock)
         else:
             raise WireFailure(WireErrorCode.INVALID_PARAMS, 'spec.kind must be "task" or "world"',
                               kind="invalid_params", retryable=False)
@@ -82,8 +99,16 @@ class SessionRegistry:
         with self._lock:
             self._counter += 1
             sid = f"s{self._counter}"
-            self._sessions[sid] = _Session(env, clock)
+            self._sessions[sid] = _Session(env, clock, **recipe)
         return sid
+
+    def session(self, session_id: Any) -> _Session:
+        """The live session, for the custom operations that read or grade its world."""
+        with self._lock:
+            session = self._sessions.get(session_id)
+        if session is None:
+            raise _not_found(session_id)
+        return session
 
     def close(self, session_id: Any) -> None:
         with self._lock:
