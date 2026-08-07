@@ -105,13 +105,14 @@ def test_an_unknown_method_is_method_not_found():
     assert replies[1]["error"]["code"] == wire.WireErrorCode.METHOD_NOT_FOUND
 
 
-def test_custom_is_forbidden_to_the_platform_and_undefined_for_a_miner():
-    replies = drive(INITIALIZE, req(2, "custom"))
+def test_custom_is_forbidden_to_the_platform_and_gated_for_a_miner():
+    replies = drive(INITIALIZE, req(2, "custom", {"op": "toolSchemas"}))
     assert replies[1]["error"]["code"] == wire.WireErrorCode.CUSTOM_FORBIDDEN
 
     miner_init = req(1, "gym.initialize", {"protocolVersion": 1, "role": "miner"})
-    replies = drive(miner_init, req(2, "custom"))
+    replies = drive(miner_init, req(2, "custom", {"op": "not_an_op"}), req(3, "custom"))
     assert replies[1]["error"]["code"] == wire.WireErrorCode.UNKNOWN_CUSTOM_OP
+    assert replies[2]["error"]["code"] == wire.WireErrorCode.INVALID_PARAMS  # op is required
 
 
 def test_reinitialize_is_idempotent_but_the_role_is_fixed_for_the_connection():

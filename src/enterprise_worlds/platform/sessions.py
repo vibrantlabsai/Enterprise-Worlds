@@ -104,6 +104,7 @@ class SessionRegistry:
 
     def session(self, session_id: Any) -> _Session:
         """The live session, for the custom operations that read or grade its world."""
+        _require_id(session_id)
         with self._lock:
             session = self._sessions.get(session_id)
         if session is None:
@@ -111,11 +112,13 @@ class SessionRegistry:
         return session
 
     def close(self, session_id: Any) -> None:
+        _require_id(session_id)
         with self._lock:
             if self._sessions.pop(session_id, None) is None:
                 raise _not_found(session_id)
 
     def call_tool(self, session_id: Any, name: Any, args: Any) -> Dict[str, Any]:
+        _require_id(session_id)
         if not isinstance(name, str) or not name:
             raise WireFailure(WireErrorCode.INVALID_PARAMS, "name must be a non-empty string",
                               kind="invalid_params", retryable=False)
@@ -141,6 +144,14 @@ class SessionRegistry:
                 reset_now()
         finally:
             session.lock.release()
+
+
+def _require_id(session_id: Any) -> None:
+    """A malformed id is the caller's error, not a lookup miss — and an unhashable one must not
+    surface as an INTERNAL_ERROR out of a dict probe."""
+    if not isinstance(session_id, str):
+        raise WireFailure(WireErrorCode.INVALID_PARAMS, "sessionId must be a string",
+                          kind="invalid_params", retryable=False)
 
 
 def _not_found(session_id: Any) -> WireFailure:

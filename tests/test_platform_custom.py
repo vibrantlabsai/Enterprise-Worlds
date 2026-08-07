@@ -111,11 +111,74 @@ def test_db_hash_eval_is_structure_only_and_binds_the_sessions_recipe():
 
 def test_db_hash_eval_validates_its_arguments():
     reg, sid = _world()
-    with pytest.raises(WireFailure) as exc:
-        _call(reg, sid, "dbHashEval", {})
-    assert exc.value.code == wire.WireErrorCode.INVALID_PARAMS
-    # The snake_case spelling the bridge-era miner used is accepted too.
+    bad = [{}, {"goldActions": "x"}, {"goldActions": [1, 2]},
+           {"goldActions": [{"name": 7}]}, {"goldActions": [{"name": "t", "arguments": []}]}]
+    for args in bad:
+        with pytest.raises(WireFailure) as exc:
+            _call(reg, sid, "dbHashEval", args)
+        assert exc.value.code == wire.WireErrorCode.INVALID_PARAMS, args
+        assert "pydantic" not in str(exc.value)  # caller error, refused concisely
+    # The snake_case spelling the bridge-era miner used is accepted too, and an explicit null under
+    # the camel key must not shadow it.
     assert _call(reg, sid, "dbHashEval", {"gold_actions": []}) == {"db_match": True, "reward": 1.0}
+    assert _call(reg, sid, "dbHashEval", {"goldActions": None, "gold_actions": []}) == \
+        {"db_match": True, "reward": 1.0}
+
+
+def test_the_bridge_dialect_passes_through_verbatim():
+    # world.ts speaks snake_case today; a pass-through adapter must work COMPLETELY, not half-work.
+    reg, sid = _world()
+    base = _group_args(reg, sid)
+    assert reg.call_tool(sid, "add_new_user_group", dict(base))["success"]
+    assert custom.dispatch(reg, {"op": "db_field_schema"}) == custom.dispatch(reg, {"op": "dbFieldSchema"})
+    assert custom.dispatch(reg, {"op": "tool_schemas"}) == custom.dispatch(reg, {"op": "toolSchemas"})
+    snake = custom.dispatch(reg, {"session_id": sid, "op": "db_hash_eval", "args": {
+        "gold_actions": [{"name": "add_new_user_group", "arguments": dict(base)}]}})
+    assert snake == {"db_match": True, "reward": 1.0}
+    assert custom.dispatch(reg, {"session_id": sid, "op": "db_hash"}) == \
+        custom.dispatch(reg, {"sessionId": sid, "op": "dbHash"})
+
+
+def test_malformed_op_and_session_ids_are_caller_errors_not_gym_faults():
+    reg, sid = _world()
+    # op missing / non-string: required and nameless — INVALID_PARAMS, with discovery still riding.
+    for params in ({}, {"op": None}, {"op": {}}, {"op": ["x"]}, {"op": True}):
+        with pytest.raises(WireFailure) as exc:
+            custom.dispatch(reg, params)
+        assert exc.value.code == wire.WireErrorCode.INVALID_PARAMS, params
+        assert exc.value.details == {"ops": list(OPS)}
+    # Unhashable/malformed session ids must not surface as INTERNAL_ERROR out of a dict probe.
+    for bad_sid in ({}, [], 7, None):
+        with pytest.raises(WireFailure) as exc:
+            custom.dispatch(reg, {"sessionId": bad_sid, "op": "dbHash"})
+        assert exc.value.code == wire.WireErrorCode.INVALID_PARAMS, bad_sid
+    with pytest.raises(WireFailure) as exc:
+        _call(reg, sid, "snapshot", {"collections": [{}]})
+    assert exc.value.code == wire.WireErrorCode.INVALID_PARAMS
+    # The same boundary holds for the protocol session methods.
+    with pytest.raises(WireFailure) as exc:
+        reg.call_tool({}, "get_user", {})
+    assert exc.value.code == wire.WireErrorCode.INVALID_PARAMS
+
+
+def test_schema_ops_ignore_a_bogus_session_id():
+    # Handoff §1: "absent or ignored" — the ignored half.
+    reg = SessionRegistry()
+    for op in ("toolSchemas", "toolOutputSchemas", "dbFieldSchema"):
+        assert custom.dispatch(reg, {"sessionId": "TOTALLY_BOGUS", "op": op}) == \
+            custom.dispatch(reg, {"op": op}), op
+
+
+def test_db_hash_eval_is_clock_coherent_on_a_clocked_session():
+    # Deliberate divergence from the bridge (whose gold replay stamps under the ambient clock at
+    # eval time): the gym's verdict must be self-consistent whatever the session's clock is.
+    reg = SessionRegistry()
+    sid = reg.create({"kind": "world", "gymConfig": dict(SCOPE), "clock": "2025-06-01T00:00:00"})
+    base = _group_args(reg, sid)
+    assert reg.call_tool(sid, "add_new_user_group", dict(base))["success"]
+    assert _call(reg, sid, "dbHashEval",
+                 {"goldActions": [{"name": "add_new_user_group", "arguments": dict(base)}]}) == \
+        {"db_match": True, "reward": 1.0}
 
 
 def test_world_ops_on_an_unknown_session_are_2001():

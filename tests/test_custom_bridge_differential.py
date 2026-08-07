@@ -12,21 +12,33 @@ binding, and result shapes.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
-_BRIDGE_DIR = Path(__file__).resolve().parents[2] / "synthetic-enterprise-ops" / "task-generation" / "bridge"
+# EW_BRIDGE_DIR overrides the default sibling-checkout layout, so CI (or any other tree shape) can
+# still run the strongest acceptance instead of silently skipping it.
+_BRIDGE_DIR = Path(
+    os.environ.get("EW_BRIDGE_DIR")
+    or Path(__file__).resolve().parents[2] / "synthetic-enterprise-ops" / "task-generation" / "bridge"
+)
 
 pytestmark = pytest.mark.skipif(
     not (_BRIDGE_DIR / "bridge.py").exists(),
-    reason="synthetic-enterprise-ops checkout not found beside this repo",
+    reason="bridge.py not found (sibling synthetic-enterprise-ops checkout or EW_BRIDGE_DIR)",
 )
 
 if (_BRIDGE_DIR / "bridge.py").exists():
+    # The bridge dir also exports top-level `wire`, `test_bridge`, `test_wire`: keep it on sys.path
+    # only long enough to import the module under test, so nothing else in this pytest process can
+    # silently bind the platform repo's copies via a bare import.
     sys.path.insert(0, str(_BRIDGE_DIR))
-    import bridge as bridge_mod  # noqa: E402 - the reference implementation under test
+    try:
+        import bridge as bridge_mod  # noqa: E402 - the reference implementation under test
+    finally:
+        sys.path.remove(str(_BRIDGE_DIR))
 
 from enterprise_worlds.platform import custom  # noqa: E402
 from enterprise_worlds.platform.sessions import SessionRegistry  # noqa: E402
