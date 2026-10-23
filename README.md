@@ -75,7 +75,8 @@ eworlds domain itsm                      # print the policy
 | `--judge-llm` | `gpt-4o-mini` | NL-assertion judge |
 | `--num-tasks` / `--task-ids` | all | Restrict the task set |
 | `--k` | `1` | Trials per task; `>1` reports `pass^k` |
-| `--log-dir` | — | Write `summary.json` + per-trial trajectories |
+| `--log-dir` | — | Write `summary.json` + per-trial trajectories (refuses a dir that already holds a run) |
+| `--overwrite-log-dir` | off | Delete the previous run's `summary.json` and trial files in `--log-dir` first |
 
 ```bash
 eworlds run --domain itsm --k 4 --log-dir runs/opus \

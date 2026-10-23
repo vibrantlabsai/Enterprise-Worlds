@@ -16,6 +16,7 @@ from enterprise_worlds.run import (
     dump_trial_result,
     get_domain,
     list_domains,
+    prepare_run_dir,
     run_domain,
     save_run_dir,
 )
@@ -69,6 +70,11 @@ def add_run_args(parser: argparse.ArgumentParser) -> None:
         help="(Optional) write a structured run dir: summary.json + per task/trial trajectories.",
     )
     parser.add_argument(
+        "--overwrite-log-dir", action="store_true",
+        help="Delete a previous run's summary.json and trial files in --log-dir before running. "
+             "Without it, a --log-dir that already holds a run is refused.",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true",
         help="Print the conversation for each task.",
     )
@@ -96,6 +102,13 @@ def _print_task_result(result: TaskResult, verbose: bool) -> None:
 
 
 def run_run(args: argparse.Namespace) -> None:
+    if args.log_dir:
+        # Checked before any model call, so a refused run costs nothing and touches no files.
+        try:
+            prepare_run_dir(args.log_dir, overwrite=args.overwrite_log_dir)
+        except OSError as e:  # FileExistsError (dir holds a run) or a failed overwrite
+            sys.exit(f"error: {e}")
+
     # When --log-dir is set, persist each trial's trajectory AS IT COMPLETES (not only at the end),
     # so an interrupted/crashed run keeps the trajectories already produced.
     def on_result(r: TaskResult) -> None:

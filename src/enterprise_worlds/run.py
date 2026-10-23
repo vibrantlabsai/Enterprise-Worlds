@@ -250,6 +250,61 @@ def run_domain(
     )
 
 
+def _run_dir_artifacts(out: Path) -> list[Path]:
+    """Files a previous run wrote into ``out`` (``summary.json`` and ``<task_id>/trial_<i>.json``)."""
+    if not out.is_dir():
+        return []
+    found = [out / "summary.json"] if (out / "summary.json").is_file() else []
+    found += sorted(
+        p for p in out.glob("*/trial_*.json")
+        if p.is_file() and p.stem.removeprefix("trial_").isdigit()
+    )
+    return found
+
+
+def prepare_run_dir(out_dir: Union[str, Path], overwrite: bool = False) -> None:
+    """Ensure ``out_dir`` will hold exactly one run; call before the run writes any trial.
+
+    Reusing a run dir otherwise mixes two runs: trial files are replaced one by one as trials
+    finish, so any trial the new run doesn't reach (smaller ``k``, fewer tasks, an interrupted
+    run) keeps the previous run's file next to the new ``summary.json``. Trial files don't record
+    the model, so the mix can't be detected afterwards.
+
+    Raises ``FileExistsError`` (and touches nothing) if a previous run's artifacts are present,
+    unless ``overwrite`` is set, in which case only those artifacts are deleted. An empty or
+    missing dir, or one holding only unrelated files, is accepted as-is. Overwrite never deletes
+    through a symlinked task dir (that would remove files outside ``out_dir``); it refuses instead.
+    If a deletion fails part-way, the remaining artifacts are still detected on the next run.
+    """
+    out = Path(out_dir)
+    artifacts = _run_dir_artifacts(out)
+    if not artifacts:
+        return
+    if not overwrite:
+        raise FileExistsError(
+            f"{out} already contains results from a previous run ({len(artifacts)} files, e.g. "
+            f"{artifacts[0].relative_to(out)}); writing into it would mix the two runs. Use a new "
+            "--log-dir, or pass --overwrite-log-dir to delete those results first."
+        )
+    linked = sorted({p.parent.name for p in artifacts if p.parent != out and p.parent.is_symlink()})
+    if linked:
+        raise FileExistsError(
+            f"{out} contains symlinked task dirs holding trial files ({', '.join(linked)}); "
+            "--overwrite-log-dir won't delete through them. Use a new --log-dir."
+        )
+    try:
+        for p in artifacts:
+            p.unlink(missing_ok=True)  # a symlinked trial/summary file: only the link is removed
+        for task_dir in {p.parent for p in artifacts if p.parent != out}:
+            if task_dir.is_dir() and not any(task_dir.iterdir()):
+                task_dir.rmdir()
+    except OSError as e:
+        raise OSError(
+            f"could not clear previous results in {out}: {e}. Nothing was run; fix the problem "
+            "and retry, or use a new --log-dir."
+        ) from e
+
+
 def dump_trial_result(out_dir: Union[str, Path], r: TaskResult) -> Path:
     """Write one trial's full TaskResult to ``<out_dir>/<task_id>/trial_<i>.json`` and return it.
 
